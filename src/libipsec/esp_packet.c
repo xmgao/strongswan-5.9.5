@@ -17,15 +17,17 @@
 
 
 #include "esp_packet.h"
-
+#include "sha256hmac.h"
 #include <library.h>
 #include <utils/debug.h>
 #include <crypto/crypters/crypter.h>
 #include <crypto/signers/signer.h>
 #include <bio/bio_reader.h>
 #include <bio/bio_writer.h>
-#include <openssl/sha.h>
-#define BUFFLEN 1024
+#include <string.h>
+#include <stdio.h>
+#define BUFFLEN 1500
+#define EVP_MAX_MD_SIZE 64
 #ifndef WIN32
 #include <netinet/in.h>
 #endif
@@ -59,6 +61,55 @@ struct private_esp_packet_t {
 
 };
 
+//hkdf
+void compute_hmac_ex(unsigned char* dest, const uint8_t *key, uint32_t klen, const uint8_t *msg, uint32_t mlen)
+	{
+		uint8_t md[SHA256_DIGESTLEN] = {0};
+		HMAC_SHA256_CTX hmac;
+		hmac_sha256_init(&hmac, key, klen);
+		hmac_sha256_update(&hmac, msg, mlen);
+		hmac_sha256_final(&hmac, md);
+		memcpy(dest, md, SHA256_DIGESTLEN);
+	}
+ 
+void HKDF(const unsigned char *salt, int salt_len,
+          const unsigned char *ikm, int ikm_len,
+          const unsigned char *info, int info_len,
+          unsigned char *okm, int okm_len);
+
+
+void HKDF(const unsigned char *salt, int salt_len,
+          const unsigned char *ikm, int ikm_len,
+          const unsigned char *info, int info_len,
+          unsigned char *okm, int okm_len)
+{
+    unsigned char prk[EVP_MAX_MD_SIZE];
+	compute_hmac_ex(prk, (const uint8_t *)salt, salt_len, (const uint8_t *)ikm, ikm_len);
+    unsigned char prev[EVP_MAX_MD_SIZE];
+    memset(prev, 0x00, EVP_MAX_MD_SIZE);
+
+    int iter = (okm_len + 31) / 32;
+
+    for (int i = 0; i < iter; i++) {
+        unsigned char hmac_input[EVP_MAX_MD_SIZE];
+        if (i == 0) {
+            memcpy(hmac_input, info, info_len);
+            hmac_input[info_len] = 0x01;
+        } else {
+            memcpy(hmac_input, prev, 32);
+            memcpy(hmac_input + 32, info, info_len);
+            hmac_input[32 + info_len] = i + 1;
+        }
+
+        unsigned char hmac_out[EVP_MAX_MD_SIZE];
+		compute_hmac_ex(hmac_out, (const uint8_t *)prk, 32, (const uint8_t *)hmac_input, info_len + 32 * (i == 0 ? 0 : 1)+1);
+
+        memcpy(prev, hmac_out, 32);
+        memcpy(okm + i * 32, hmac_out,
+               (i == iter - 1) ? okm_len - i * 32 : 32);
+    }
+}
+
 /**
 	 *派生量子密钥
 	 *
@@ -68,17 +119,17 @@ struct private_esp_packet_t {
 	 *
 	 * @param key			原始密钥
 	 * @param next_seqno	序列号
+	 * @param keysize		密钥长度
 	 * @return				TRUE if 获取成功
 */
-static bool derive_key(u_char* key, int syn) {
-	int len = strlen(key);
-	u_char tmp[256];
-	sprintf(tmp, "%d", syn);
-	strcat(tmp, key);
-	unsigned char sha1[SHA_DIGEST_LENGTH];
-	SHA1(tmp, strlen(tmp), sha1);
-	memcpy(key, sha1, len);
-	return true;
+
+static void derive_key(unsigned char* key, int next_seqno,int keysize) {
+	unsigned char salt[32] = {0};
+    unsigned char info[32];
+    unsigned char okm[keysize];
+	sprintf(info, "%d", next_seqno);
+	HKDF(salt, sizeof(salt), key, strlen(key), info, strlen(info), okm, sizeof(okm));
+    memcpy(key,okm,keysize);
 }
 
 /**
@@ -101,7 +152,7 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 	static uint32_t dleft = 0, dright = 0; //解密窗口
 	static u_char tmp_ekey[256]; //加密密钥
 	static u_char tmp_dkey[256]; //解密密钥
-	u_char key[keysize];
+	u_char key[keysize+1];
 	int ret = 0, cr, fd;
 	struct sockaddr_in serv_addr, cli_addr;
 	socklen_t client_addr_size;
@@ -159,13 +210,14 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 		}
 		memcpy(key, tmp_dkey, keysize);
 	}
-	derive_key(key, next_seqno);
+	derive_key(key, next_seqno,keysize);
 	
 	*qk=chunk_create(key, keysize);
 	
 	close(fd);
 	return true;
 }
+
 
 
 /**
