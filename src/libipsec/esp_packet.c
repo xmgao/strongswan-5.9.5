@@ -72,11 +72,6 @@ void compute_hmac_ex(unsigned char* dest, const uint8_t *key, uint32_t klen, con
 		memcpy(dest, md, SHA256_DIGESTLEN);
 	}
  
-void HKDF(const unsigned char *salt, int salt_len,
-          const unsigned char *ikm, int ikm_len,
-          const unsigned char *info, int info_len,
-          unsigned char *okm, int okm_len);
-
 
 void HKDF(const unsigned char *salt, int salt_len,
           const unsigned char *ikm, int ikm_len,
