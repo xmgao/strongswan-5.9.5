@@ -213,7 +213,70 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 	return true;
 }
 
+/**
+	 *获取量子OTP密钥
+	 *
+	 * 通过spi和序列号获取对应的密钥
+	 * 
+	 * 
+	 *
+	 * @param spi			spi
+	 * @param next_seqno	序列号
+	 * @param key_type		TRUE表示加密，FALSE表示解密
+	 * @param qk			量子密钥存储
+	 * @param keysize		密钥长度
+	 * @return				TRUE if 获取成功
+	 */
+static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
+	static u_char tmp_ekey[1025]; //加密密钥
+	static u_char tmp_dkey[1025]; //解密密钥
+	u_char key[keysize+1];
+	int ret = 0, cr, fd,M_size;
+	struct sockaddr_in serv_addr, cli_addr;
+	socklen_t client_addr_size;
+	char buf[BUFFLEN], rbuf[BUFFLEN];
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(50000);
+	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);
+	cr = connect(fd, &serv_addr, sizeof(serv_addr)); //连接对方服务器
+	if (cr < 0) {
+		perror("getqotpk connect error!\n");
+		return false;
+	}
+	if (key_type){
+		sprintf(buf, "getotpk %u %u 0\n", spi, next_seqno);
+	}
+	else{
+		sprintf(buf, "getotpk %u %u 1\n", spi, next_seqno);
+	}
+	ret = send(fd, buf, strlen(buf), 0);
+	if (ret < 0) {
+		perror("getqotpk send error!\n");
+		return false;
+	}
+	ret = read(fd, rbuf, sizeof(rbuf));
+	if (ret < 0) {
+		perror("getqotpk read error!\n");
+		return false;
+	}
+	if (key_type){
+		sscanf(rbuf, "%[^ ] %d", tmp_ekey, &M_size);
+		memcpy(key, tmp_ekey, keysize);
+	}
+	else{
+		sscanf(rbuf, "%[^ ] %d", tmp_dkey, &M_size);
+		memcpy(key, tmp_dkey, keysize);
+	}
 
+
+	derive_key(key, next_seqno,keysize);
+	
+	*qk=chunk_create(key, keysize);
+	
+	close(fd);
+	return true;
+}
 
 /**
  * Forward declaration for clone()
@@ -404,7 +467,7 @@ METHOD(esp_packet_t, decrypt, status_t,
 	}
 	ciphertext = reader->peek(reader);
 	reader->destroy(reader);
-	if (!getqsk(spi, seq, FALSE, &qk,  aead->get_key_size(aead))) {
+	if (!getqotpk(spi, seq, FALSE, &qk,  aead->get_key_size(aead))) {
 		DBG1(DBG_ESP, "get qsk failed!");
 			return FAILED;
 	}
@@ -476,7 +539,7 @@ METHOD(esp_packet_t, encrypt, status_t,
 
 	aead = esp_context->get_aead(esp_context);
 	
-	if (!getqsk(spi,next_seqno,TRUE,&qk, aead->get_key_size(aead))) {
+	if (!getqotpk(spi,next_seqno,TRUE,&qk, aead->get_key_size(aead))) {
 		DBG1(DBG_ESP, "get qsk failed!");
 		return FAILED;
 	}
