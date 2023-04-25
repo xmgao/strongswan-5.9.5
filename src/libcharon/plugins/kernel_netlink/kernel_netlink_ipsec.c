@@ -227,6 +227,7 @@ static kernel_algorithm_t encryption_algs[] = {
 	{ENCR_SM1_CBC,				"cbc(sm4)"			},
 	{ENCR_SM4_ECB,				"ecb(sm4)"			},
 	{ENCR_SM4_CBC,				"cbc(sm4)"			},
+	{ENCR_OTP_CBC,				"cbc(otp)"			},
 /*	{ENCR_CAMELLIA_CTR,			"***"				}, */
 /*	{ENCR_CAMELLIA_CCM_ICV8,	"***"				}, */
 /*	{ENCR_CAMELLIA_CCM_ICV12,	"***"				}, */

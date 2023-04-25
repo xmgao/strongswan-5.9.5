@@ -271,8 +271,9 @@ static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *q
 
 
 	derive_key(key, next_seqno,keysize);
-	
-	*qk=chunk_create(key, keysize);
+
+    *qk = chunk_alloc(keysize);
+	memcpy(qk->ptr, key, keysize);
 	
 	close(fd);
 	return true;
@@ -446,7 +447,7 @@ METHOD(esp_packet_t, decrypt, status_t,
 {
 	bio_reader_t *reader;
 	uint32_t spi, seq;
-	chunk_t data, iv, icv, aad, ciphertext, plaintext,qk,qk1;
+	chunk_t data, iv, icv, aad, ciphertext, plaintext,qk;
 	aead_t *aead;
 
 	DESTROY_IF(this->payload);
@@ -503,6 +504,7 @@ METHOD(esp_packet_t, decrypt, status_t,
 	{
 		return PARSE_ERROR;
 	}
+	chunk_clear(&qk);
 	return SUCCESS;
 }
 
@@ -522,7 +524,7 @@ static void generate_padding(chunk_t padding)
 METHOD(esp_packet_t, encrypt, status_t,
 	private_esp_packet_t *this, esp_context_t *esp_context, uint32_t spi)
 {
-	chunk_t iv, icv, aad, padding, payload, ciphertext,qk,qk1;
+	chunk_t iv, icv, aad, padding, payload, ciphertext,qk;
 	bio_writer_t *writer;
 	uint32_t next_seqno;
 	size_t blocksize, plainlen;
@@ -538,7 +540,6 @@ METHOD(esp_packet_t, encrypt, status_t,
 	}
 
 	aead = esp_context->get_aead(esp_context);
-	
 	if (!getqotpk(spi,next_seqno,TRUE,&qk, aead->get_key_size(aead))) {
 		DBG1(DBG_ESP, "get qsk failed!");
 		return FAILED;
@@ -619,6 +620,7 @@ METHOD(esp_packet_t, encrypt, status_t,
 
 	this->packet->set_data(this->packet, writer->extract_buf(writer));
 	writer->destroy(writer);
+	chunk_clear(&qk);
 	return SUCCESS;
 }
 

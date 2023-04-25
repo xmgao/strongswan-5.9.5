@@ -61,7 +61,9 @@ enum encryption_algorithm_t {
 	ENCR_SM1_CBC            = 29,
 	ENCR_SM4_ECB            = 30,
 	ENCR_SM4_CBC            = 31,
-	ENCR_CHACHA20_POLY1305 =  32,
+	ENCR_OTP_CBC            = 32,
+	ENCR_CHACHA20_POLY1305 =  33,
+
 	ENCR_UNDEFINED =        1024,
 	ENCR_DES_ECB =          1025,
 	ENCR_SERPENT_CBC =      1026,
@@ -74,6 +76,7 @@ enum encryption_algorithm_t {
 
 #define DES_BLOCK_SIZE			 8
 #define BLOWFISH_BLOCK_SIZE		 8
+#define OTP_BLOCK_SIZE		 	16
 #define AES_BLOCK_SIZE			16
 #define CAMELLIA_BLOCK_SIZE		16
 #define SERPENT_BLOCK_SIZE		16

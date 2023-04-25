@@ -50,6 +50,7 @@ ENUM_NEXT(encryption_algorithm_names, ENCR_CAMELLIA_CBC, ENCR_CHACHA20_POLY1305,
 	"SM1_CBC",
 	"SM4_ECB",
 	"SM4_CBC",
+	"OTP_CBC",
 	"CHACHA20_POLY1305");
 ENUM_NEXT(encryption_algorithm_names, ENCR_UNDEFINED, ENCR_AES_CFB, ENCR_CHACHA20_POLY1305,
 	"UNDEFINED",
@@ -86,6 +87,10 @@ encryption_algorithm_t encryption_algorithm_from_oid(int oid, size_t *key_size)
 		case OID_SM4_CBC:
 			alg = ENCR_SM4_CBC;
 			alg_key_size = 16 ;
+			break;
+		case OID_OTP_CBC:
+			alg = ENCR_OTP_CBC;
+			alg_key_size = 128 ;
 			break;
 		case OID_DES_CBC:
 			alg = ENCR_DES;
@@ -154,6 +159,9 @@ int encryption_algorithm_to_oid(encryption_algorithm_t alg, size_t key_size)
 			break;
 		case ENCR_SM4_CBC:
 			oid = OID_SM4_CBC;
+			break;
+		case ENCR_OTP_CBC:
+			oid = OID_OTP_CBC;
 			break;
 		case ENCR_DES:
 			oid = OID_DES_CBC;

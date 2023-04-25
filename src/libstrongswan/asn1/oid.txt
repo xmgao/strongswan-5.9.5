@@ -80,6 +80,8 @@
             0x68             "sm4"
               0x01           "sm4-ecb"                          OID_SM4_ECB
               0x02           "sm4-cbc"                          OID_SM4_CBC
+            0x69             "otp"
+              0x01           "otp-cbc"                          OID_OTP_CBC
             0x82             ""
               0x2d           "sm2"				OID_SM2
             0x83             ""

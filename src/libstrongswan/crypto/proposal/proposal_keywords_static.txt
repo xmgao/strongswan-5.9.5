@@ -120,6 +120,7 @@ sm1ecb,           ENCRYPTION_ALGORITHM, ENCR_SM1_ECB,            128
 sm1cbc,           ENCRYPTION_ALGORITHM, ENCR_SM1_CBC,            128
 sm4ecb,           ENCRYPTION_ALGORITHM, ENCR_SM4_ECB,            128
 sm4cbc,           ENCRYPTION_ALGORITHM, ENCR_SM4_CBC,            128
+otpcbc,           ENCRYPTION_ALGORITHM, ENCR_OTP_CBC,            128
 serpent,          ENCRYPTION_ALGORITHM, ENCR_SERPENT_CBC,        128
 serpent128,       ENCRYPTION_ALGORITHM, ENCR_SERPENT_CBC,        128
 serpent192,       ENCRYPTION_ALGORITHM, ENCR_SERPENT_CBC,        192

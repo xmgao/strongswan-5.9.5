@@ -70,6 +70,7 @@ extern const oid_t oid_names[];
 #define OID_SM1_CBC							78
 #define OID_SM4_ECB							80
 #define OID_SM4_CBC							81
+#define OID_OTP_CBC							82
 #define OID_SM2								83
 #define OID_SM3								86
 #define OID_SM2_WITH_SM3					87

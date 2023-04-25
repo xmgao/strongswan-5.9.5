@@ -343,6 +343,9 @@ ipsec_sa_t *ipsec_sa_create(uint32_t spi, host_t *src, host_t *dst,
 	DBG1(DBG_CFG, "spi:%.8x,enc_key: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x, int_key: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", ntohl(this->spi), *(enc_key.ptr), *(enc_key.ptr + 1), *(enc_key.ptr + 2), *(enc_key.ptr + 3), *(enc_key.ptr + 4),
 		*(enc_key.ptr + 5), *(enc_key.ptr + 6), *(enc_key.ptr + 7), *(enc_key.ptr + 8), *(enc_key.ptr + 9), *(enc_key.ptr + 10), *(enc_key.ptr + 11), *(enc_key.ptr + 12), *(enc_key.ptr + 13), *(enc_key.ptr + 14), *(enc_key.ptr + 15), *(int_key.ptr + 0), *(int_key.ptr + 1), *(int_key.ptr + 2), *(int_key.ptr + 3), *(int_key.ptr + 4), *(int_key.ptr + 5), *(int_key.ptr + 6), *(int_key.ptr + 7), *(int_key.ptr + 8), *(int_key.ptr + 9), *(int_key.ptr + 10), *(int_key.ptr + 11), *(int_key.ptr + 12), *(int_key.ptr + 13), *(int_key.ptr + 14), *(int_key.ptr + 15), *(int_key.ptr + 16), *(int_key.ptr + 17), *(int_key.ptr + 18), *(int_key.ptr + 19), *(int_key.ptr + 20), *(int_key.ptr + 21), *(int_key.ptr + 22), *(int_key.ptr + 23), *(int_key.ptr + 24), *(int_key.ptr + 25), *(int_key.ptr +26), *(int_key.ptr + 27), *(int_key.ptr + 28), *(int_key.ptr + 29), *(int_key.ptr + 30), *(int_key.ptr + 31));
 	*/
+
+	DBG0(DBG_CFG, "enc_key_len: %d",enc_key.len);
+
 	if (!this->esp_context)
 	{
 		destroy(this);
