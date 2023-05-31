@@ -15,21 +15,21 @@
  */
 
 /**
- * @defgroup otp_crypter otp_crypter
- * @{ @ingroup otp_p
+ * @defgroup otpalg_crypter otpalg_crypter
+ * @{ @ingroup otpalg_p
  */
 
 #ifndef OTP_CRYPTER_H_
 #define OTP_CRYPTER_H_
 
-typedef struct otp_crypter_t otp_crypter_t;
+typedef struct otpalg_crypter_t otpalg_crypter_t;
 
 #include <crypto/crypters/crypter.h>
 
 /**
  * Class implementing the OTP encryption algorithm.
  */
-struct otp_crypter_t {
+struct otpalg_crypter_t {
 
 	/**
 	 * Implements crypter_t interface.
@@ -38,13 +38,13 @@ struct otp_crypter_t {
 };
 
 /**
- * Constructor to create otp_crypter_t objects.
+ * Constructor to create otpalg_crypter_t objects.
  *
  * @param key_size		key size in bytes
  * @param algo			algorithm to implement
- * @return				otp_crypter_t object, NULL if not supported
+ * @return				otpalg_crypter_t object, NULL if not supported
  */
-otp_crypter_t *otpalg_crypter_create(encryption_algorithm_t algo,
+otpalg_crypter_t *otpalg_crypter_create(encryption_algorithm_t algo,
 								  size_t key_size);
 
 #endif /** OTP_CRYPTER_H_ @}*/

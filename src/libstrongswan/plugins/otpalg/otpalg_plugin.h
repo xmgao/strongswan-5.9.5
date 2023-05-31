@@ -11,12 +11,12 @@
 
 #include <plugins/plugin.h>
 
-typedef struct otp_plugin_t otp_plugin_t;
+typedef struct otpalg_plugin_t otpalg_plugin_t;
 
 /**
  * Plugin implementing crypto functions via the otpalg library
  */
-struct otp_plugin_t {
+struct otpalg_plugin_t {
 
 	/**
 	 * implements plugin interface

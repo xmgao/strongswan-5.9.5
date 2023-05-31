@@ -11,6 +11,6 @@ plugin_LTLIBRARIES = libstrongswan-otpalg.la
 endif
 
 libstrongswan_otpalg_la_SOURCES = \
-	otp_plugin.h otp_plugin.c otp_crypter.c otp_crypter.h 
+	otpalg_plugin.h otpalg_plugin.c otpalg_crypter.c otpalg_crypter.h 
 
 libstrongswan_otpalg_la_LDFLAGS = -module -avoid-version

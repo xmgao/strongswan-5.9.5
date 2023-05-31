@@ -17,30 +17,30 @@
 
 
 #include <library.h>
-#include "otp_crypter.h"
-#include "otp_plugin.h"
+#include "otpalg_crypter.h"
+#include "otpalg_plugin.h"
 
-typedef struct private_otp_plugin_t private_otp_plugin_t;
+typedef struct private_otpalg_plugin_t private_otpalg_plugin_t;
 
 /**
- * private data of otp_plugin
+ * private data of otpalg_plugin
  */
-struct private_otp_plugin_t {
+struct private_otpalg_plugin_t {
 
 	/**
 	 * public functions
 	 */
-	otp_plugin_t public;
+	otpalg_plugin_t public;
 };
 
 METHOD(plugin_t, get_name, char*,
-	private_otp_plugin_t *this)
+	private_otpalg_plugin_t *this)
 {
 	return "otpalg";
 }
 
 METHOD(plugin_t, get_features, int,
-	private_otp_plugin_t *this, plugin_feature_t *features[])
+	private_otpalg_plugin_t *this, plugin_feature_t *features[])
 {
 	static plugin_feature_t f[] = {
 		PLUGIN_REGISTER(CRYPTER, otpalg_crypter_create),
@@ -51,7 +51,7 @@ METHOD(plugin_t, get_features, int,
 }
 
 METHOD(plugin_t, destroy, void,
-	private_otp_plugin_t *this)
+	private_otpalg_plugin_t *this)
 {
 	free(this);
 }
@@ -59,9 +59,9 @@ METHOD(plugin_t, destroy, void,
 /*
  * see header file
  */
-plugin_t *otp_plugin_create()
+plugin_t *otpalg_plugin_create()
 {
-	private_otp_plugin_t *this;
+	private_otpalg_plugin_t *this;
 
 	INIT(this,
 		.public = {

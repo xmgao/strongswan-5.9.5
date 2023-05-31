@@ -1,22 +1,22 @@
 
-/* Otp as implemented from 'Otp: Springer-Verlag paper'
+/* OTP as implemented from 'OTP: Springer-Verlag paper'
  * (From LECTURE NOTES IN COMPUTER SCIENCE 809, FAST SOFTWARE ENCRYPTION,
  * CAMBRIDGE SECURITY WORKSHOP, CAMBRIDGE, U.K., DECEMBER 9-11, 1993)
  */
 
-#include "otp_crypter.h"
+#include "otpalg_crypter.h"
 
-typedef struct private_otp_crypter_t private_otp_crypter_t;
+typedef struct private_otpalg_crypter_t private_otpalg_crypter_t;
 
 /**
- * Class implementing the Otp symmetric encryption algorithm.
+ * Class implementing the OTP symmetric encryption algorithm.
  */
-struct private_otp_crypter_t {
+struct private_otpalg_crypter_t {
 
 	/**
 	 * Public part of this class.
 	 */
-	otp_crypter_t public;
+	otpalg_crypter_t public;
 
 	/*
 	 * the key
@@ -30,8 +30,8 @@ struct private_otp_crypter_t {
  * in: date to encrypt or decrypt
  * out: date to output
  * len: date lenth
- * key: otp key
- * key_len:otp key lenth
+ * key: otpalg key
+ * key_len:otpalg key lenth
  * enc_flag:    1,encrypt;0,decrypt
  */
 static void OTP_encrypt( const unsigned char* in, unsigned char* out,unsigned int len,unsigned char *key,unsigned int key_len,bool enc_flag)
@@ -51,7 +51,7 @@ static void OTP_encrypt( const unsigned char* in, unsigned char* out,unsigned in
 
 
 METHOD(crypter_t, decrypt, bool,
-	private_otp_crypter_t *this, chunk_t data, chunk_t iv,
+	private_otpalg_crypter_t *this, chunk_t data, chunk_t iv,
 	chunk_t *decrypted)
 {
 	uint8_t *in, *out;
@@ -74,7 +74,7 @@ METHOD(crypter_t, decrypt, bool,
 }
 
 METHOD(crypter_t, encrypt, bool,
-	private_otp_crypter_t *this, chunk_t data, chunk_t iv,
+	private_otpalg_crypter_t *this, chunk_t data, chunk_t iv,
 	chunk_t *encrypted)
 {
 	uint8_t *in, *out;
@@ -97,25 +97,25 @@ METHOD(crypter_t, encrypt, bool,
 }
 
 METHOD(crypter_t, get_block_size, size_t,
-	private_otp_crypter_t *this)
+	private_otpalg_crypter_t *this)
 {
 	return OTP_BLOCK_SIZE;
 }
 
 METHOD(crypter_t, get_iv_size, size_t,
-	private_otp_crypter_t *this)
+	private_otpalg_crypter_t *this)
 {
 	return OTP_BLOCK_SIZE;
 }
 
 METHOD(crypter_t, get_key_size, size_t,
-	private_otp_crypter_t *this)
+	private_otpalg_crypter_t *this)
 {
 	return 1024;
 }
 
 METHOD(crypter_t, set_key, bool,
-	private_otp_crypter_t *this, chunk_t key)
+	private_otpalg_crypter_t *this, chunk_t key)
 {   
     chunk_clear(&this->key);
     this->key = chunk_alloc(key.len);
@@ -125,7 +125,7 @@ METHOD(crypter_t, set_key, bool,
 }
 
 METHOD(crypter_t, destroy, void,
-	private_otp_crypter_t *this)
+	private_otpalg_crypter_t *this)
 {   
     chunk_clear(&this->key);
 	free(this);
@@ -134,10 +134,10 @@ METHOD(crypter_t, destroy, void,
 /*
  * Described in header
  */
-otp_crypter_t *otpalg_crypter_create(encryption_algorithm_t algo,
+otpalg_crypter_t *otpalg_crypter_create(encryption_algorithm_t algo,
 											size_t key_size)
 {
-	private_otp_crypter_t *this;
+	private_otpalg_crypter_t *this;
 
 	// if (algo != ENCR_OTP_CBC)
 	// {
