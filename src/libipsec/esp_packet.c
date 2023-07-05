@@ -141,6 +141,8 @@ static void derive_key(unsigned char* key, int next_seqno,int keysize) {
 	 * @param keysize		密钥长度
 	 * @return				TRUE if 获取成功
 	 */
+
+	/*
 static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
 	int range = 0;
 	static uint32_t eleft = 0, eright = 0; //加密窗口
@@ -212,6 +214,56 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 	close(fd);
 	return true;
 }
+*/
+
+int establish_connection_e() {
+	static int socket_fd = -1; // 静态变量用于保存套接字的文件描述符
+    if (socket_fd == -1) {
+        // 第一次调用，创建套接字
+        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (socket_fd == -1) {
+            perror("Failed to create socket");
+            // 处理套接字创建失败的情况
+			return -1;
+        }
+        // 可以在这里进行套接字的初始化配置
+		struct sockaddr_in serv_addr;
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_port = htons(50000);	// 设置服务器端口号
+		inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);// 设置服务器IP地址
+		int connect_result = connect(socket_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+		if (connect_result == -1) {
+			perror("getqotpk connect error!\n");
+			return -1;
+    	}
+		}
+    return socket_fd;
+}
+
+int establish_connection_d() {
+	static int socket_fd = -1; // 静态变量用于保存套接字的文件描述符
+    if (socket_fd == -1) {
+        // 第一次调用，创建套接字
+        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (socket_fd == -1) {
+            perror("Failed to create socket");
+            // 处理套接字创建失败的情况
+			return -1;
+        }
+        // 可以在这里进行套接字的初始化配置
+		struct sockaddr_in serv_addr;
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_port = htons(50000);	// 设置服务器端口号
+		inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);// 设置服务器IP地址
+		int connect_result = connect(socket_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+		if (connect_result == -1) {
+			perror("getqotpk connect error!\n");
+			return -1;
+    	}
+		}
+    return socket_fd;
+}
+
 
 /**
 	 *获取量子OTP密钥
@@ -231,24 +283,27 @@ static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *q
 	static u_char tmp_ekey[1025]; //加密密钥
 	static u_char tmp_dkey[1025]; //解密密钥
 	u_char key[keysize+1];
-	int ret = 0, cr, fd,M_size;
-	struct sockaddr_in serv_addr, cli_addr;
-	socklen_t client_addr_size;
+	int ret = 0,M_size;
+
 	char buf[BUFFLEN], rbuf[BUFFLEN];
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(50000);
-	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);
-	cr = connect(fd, &serv_addr, sizeof(serv_addr)); //连接对方服务器
-	if (cr < 0) {
-		perror("getqotpk connect error!\n");
-		return false;
-	}
+	int fd;
 	if (key_type){
 		sprintf(buf, "getotpk %u %u 0\n", spi, next_seqno);
+		fd=establish_connection_e();
+		 if (fd == -1) {
+        // 处理建立连接失败的情况
+        perror("establish_connection error!\n");
+		return false;
+    	}
 	}
 	else{
 		sprintf(buf, "getotpk %u %u 1\n", spi, next_seqno);
+		fd=establish_connection_d();
+		 if (fd == -1) {
+        // 处理建立连接失败的情况
+        perror("establish_connection error!\n");
+		return false;
+    	}
 	}
 	ret = send(fd, buf, strlen(buf), 0);
 	if (ret < 0) {
@@ -269,13 +324,11 @@ static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *q
 		memcpy(key, tmp_dkey, keysize);
 	}
 
-
 	derive_key(key, next_seqno,keysize);
 
     *qk = chunk_alloc(keysize);
 	memcpy(qk->ptr, key, keysize);
 	
-	close(fd);
 	return true;
 }
 

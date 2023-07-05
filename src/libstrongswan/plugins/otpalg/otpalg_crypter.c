@@ -111,7 +111,7 @@ METHOD(crypter_t, get_iv_size, size_t,
 METHOD(crypter_t, get_key_size, size_t,
 	private_otpalg_crypter_t *this)
 {
-	return 1024;
+	return 1448;
 }
 
 METHOD(crypter_t, set_key, bool,
