@@ -80,38 +80,13 @@ struct private_blowfish_crypter_t {
 	 * Blowfish key schedule
 	 */
 	BF_KEY schedule;
-	
-	/*
-	 * the key
-	 */
-	chunk_t	key;
 
+	/**
+	* Key size of this Blowfish cipher object.
+	*/
+	uint32_t key_size;
 };
 
-
-/**
- * Encrypt  data.
- * in: date to encrypt or decrypt
- * out: date to output
- * len: date lenth
- * key: otp key
- * key_len:otp key lenth
- * enc_flag:    1,encrypt;0,decrypt
- */
-static void OTP_encrypt( const unsigned char* in, unsigned char* out,unsigned int len,unsigned char *key,unsigned int key_len,bool enc_flag)
-{
-    if(enc_flag){
-        for (int i = 0; i < len; i++) {
-            out[i] = (in[i] + key[i%key_len]) % 256;
-        }
-    }
-
-    else{
-        for (int i = 0; i < len; i++) {
-            out[i] = (in[i]-key[i%key_len] + 256) % 256;
-        }
-    }
-}
 METHOD(crypter_t, decrypt, bool,
 	private_blowfish_crypter_t *this, chunk_t data, chunk_t iv,
 	chunk_t *decrypted)
@@ -128,9 +103,11 @@ METHOD(crypter_t, decrypt, bool,
 		out = data.ptr;
 	}
 	in = data.ptr;
+	iv = chunk_clone(iv);
 
-	OTP_encrypt(in, out, data.len, this->key.ptr,this->key.len,0);
+	BF_cbc_encrypt(in, out, data.len, &this->schedule, iv.ptr, 0);
 
+	free(iv.ptr);
 
 	return TRUE;
 }
@@ -151,9 +128,11 @@ METHOD(crypter_t, encrypt, bool,
 		out = data.ptr;
 	}
 	in = data.ptr;
+	iv = chunk_clone(iv);
 
-	OTP_encrypt(in, out, data.len, this->key.ptr,this->key.len,1);
+	BF_cbc_encrypt(in, out, data.len, &this->schedule, iv.ptr, 1);
 
+	free(iv.ptr);
 
 	return TRUE;
 }
@@ -173,25 +152,23 @@ METHOD(crypter_t, get_iv_size, size_t,
 METHOD(crypter_t, get_key_size, size_t,
 	private_blowfish_crypter_t *this)
 {
-	return 1024;
+	return this->key_size;
 }
 
 METHOD(crypter_t, set_key, bool,
 	private_blowfish_crypter_t *this, chunk_t key)
-{   
-    chunk_clear(&this->key);
-    this->key = chunk_alloc(key.len);
-	memcpy(this->key.ptr, key.ptr, key.len);
-    //this->key=chunk_create(key.ptr,key.len);
+{
+	BF_set_key(&this->schedule, key.len , key.ptr);
 	return TRUE;
 }
 
 METHOD(crypter_t, destroy, void,
 	private_blowfish_crypter_t *this)
-{   
-    chunk_clear(&this->key);
+{
+	memwipe(this, sizeof(*this));
 	free(this);
 }
+
 /*
  * Described in header
  */
@@ -217,7 +194,8 @@ blowfish_crypter_t *blowfish_crypter_create(encryption_algorithm_t algo,
 				.destroy = _destroy,
 			},
 		},
+		.key_size = key_size ?: 16,
 	);
-	this->key = chunk_alloc(key_size);
+
 	return &this->public;
 }

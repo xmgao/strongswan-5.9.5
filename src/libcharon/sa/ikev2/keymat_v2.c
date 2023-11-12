@@ -341,16 +341,16 @@ METHOD(keymat_v2_t, derive_ike_keys, bool,
 	{
 		return FALSE;
 	}
-	DBG0(DBG_IKE, "shared Diffie Hellman secret %s\n",secret.ptr);
+	DBG0(DBG_IKE, "shared Diffie Hellman secret %B\n", &secret);
+
 	
-	//strcpy(secret.ptr, "abcdabcdabcdabcdabcdabcdabcdabcd");
 	//获取量子密钥
 	if (!getqk(secret.ptr,secret.len)) {
 		DBG0(DBG_IKE, "get quantum key failed!\n");
 	}
 	
 
-	DBG0(DBG_IKE, "quantum secret %s\n", secret.ptr);
+	DBG0(DBG_IKE, "quantum secret %B\n", &secret);
 	/* Create SAs general purpose PRF first, we may use it here */
 	if (!proposal->get_algorithm(proposal, PSEUDO_RANDOM_FUNCTION, &alg, NULL))
 	{
