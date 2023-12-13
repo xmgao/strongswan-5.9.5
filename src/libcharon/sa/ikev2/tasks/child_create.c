@@ -809,37 +809,16 @@ static status_t select_and_install(private_child_create_t *this,
 		}
 	}
 	DBG0(DBG_IKE,
-		"SPI inbound: %.8x_i,encr_i: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x, "
-		"integ_i: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+		"SPI inbound: %.8x_i,encr_r: %B, integ_r: %B",
 		ntohl(this->child_sa->get_spi(this->child_sa, TRUE)),
-		*(encr_i.ptr), *(encr_i.ptr + 1), *(encr_i.ptr + 2), *(encr_i.ptr + 3), *(encr_i.ptr + 4),
-		*(encr_i.ptr + 5), *(encr_i.ptr + 6), *(encr_i.ptr + 7), *(encr_i.ptr + 8), *(encr_i.ptr + 9),
-		*(encr_i.ptr + 10), *(encr_i.ptr + 11), *(encr_i.ptr + 12), *(encr_i.ptr + 13), *(encr_i.ptr + 14),
-		*(encr_i.ptr + 15), *(integ_i.ptr + 0), *(integ_i.ptr + 1), *(integ_i.ptr + 2), *(integ_i.ptr + 3),
-		*(integ_i.ptr + 4), *(integ_i.ptr + 5), *(integ_i.ptr + 6), *(integ_i.ptr + 7), *(integ_i.ptr + 8), *(integ_i.ptr + 9),
-		*(integ_i.ptr + 10), *(integ_i.ptr + 11), *(integ_i.ptr + 12), *(integ_i.ptr + 13), *(integ_i.ptr + 14), *(integ_i.ptr + 15),
-		*(integ_i.ptr + 16), *(integ_i.ptr + 17), *(integ_i.ptr + 18), *(integ_i.ptr + 19), *(integ_i.ptr + 20), *(integ_i.ptr + 21),
-		*(integ_i.ptr + 22), *(integ_i.ptr + 23), *(integ_i.ptr + 24), *(integ_i.ptr + 25), *(integ_i.ptr + 26), *(integ_i.ptr + 27),
-		*(integ_i.ptr + 28), *(integ_i.ptr + 29), *(integ_i.ptr + 30), *(integ_i.ptr + 31)
-		);
+		&encr_r,&integ_r);
 
 	DBG0(DBG_IKE,
-		"SPI outbound: %.8x_r,encr_r: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x, "
-		"integ_r: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+		"SPI outbound: %.8x_r,encr_i: %B, integ_i: %B",
 		ntohl(this->child_sa->get_spi(this->child_sa, FALSE)),
-		*(encr_r.ptr), *(encr_r.ptr + 1), *(encr_r.ptr + 2), *(encr_r.ptr + 3), *(encr_r.ptr + 4),
-		*(encr_r.ptr + 5), *(encr_r.ptr + 6), *(encr_r.ptr + 7), *(encr_r.ptr + 8), *(encr_r.ptr + 9),
-		*(encr_r.ptr + 10), *(encr_r.ptr + 11), *(encr_r.ptr + 12), *(encr_r.ptr + 13), *(encr_r.ptr + 14),
-		*(encr_r.ptr + 15), *(integ_r.ptr + 0), *(integ_r.ptr + 1), *(integ_r.ptr + 2), *(integ_r.ptr + 3),
-		*(integ_r.ptr + 4), *(integ_r.ptr + 5), *(integ_r.ptr + 6), *(integ_r.ptr + 7), *(integ_r.ptr + 8), *(integ_r.ptr + 9),
-		*(integ_r.ptr + 10), *(integ_r.ptr + 11), *(integ_r.ptr + 12), *(integ_r.ptr + 13), *(integ_r.ptr + 14), *(integ_r.ptr + 15),
-		*(integ_r.ptr + 16), *(integ_r.ptr + 17), *(integ_r.ptr + 18), *(integ_r.ptr + 19), *(integ_r.ptr + 20), *(integ_r.ptr + 21),
-		*(integ_r.ptr + 22), *(integ_r.ptr + 23), *(integ_r.ptr + 24), *(integ_r.ptr + 25), *(integ_r.ptr + 26), *(integ_r.ptr + 27),
-		*(integ_r.ptr + 28), *(integ_r.ptr + 29), *(integ_r.ptr + 30), *(integ_i.ptr + 31)
-	);
+		&encr_i,&integ_i);
 
 	
-
 
 	chunk_clear(&integ_i);
 	chunk_clear(&integ_r);

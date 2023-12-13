@@ -15,7 +15,8 @@
  */
 
 #include "keymat_v2.h"
-#include "sys/socket.h"
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <daemon.h>
 #include <crypto/prf_plus.h>
 #include <crypto/hashers/hash_algorithm_set.h>
@@ -290,33 +291,39 @@ failure:
 }
 //获取量子密钥
 static bool getqk(char *secretkey, size_t len){
-	int  ret, cr,fd;
-	struct sockaddr_in serv_addr, cli_addr;
-	socklen_t client_addr_size;
+	int  ret;
 	char buf[BUFFLEN], rbuf[BUFFLEN];
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(50000);
-	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);	//本机地址
-
-	cr = connect(fd, &serv_addr, sizeof(serv_addr)); //连接对方服务器
-	if (cr < 0) {
-		perror("getqk connect error!\n");
-		return false;
+	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sockfd < 0) {
+		perror("socket creation failed");
+		exit(EXIT_FAILURE);
 	}
+
+	struct sockaddr_un server_addr;
+	memset(&server_addr, 0, sizeof(struct sockaddr_un));
+	server_addr.sun_family = AF_UNIX;
+	strncpy(server_addr.sun_path, "socket_path", sizeof(server_addr.sun_path) - 1);
+
+	int connect_status = connect(sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_un));
+	if (connect_status < 0) {
+		perror("connect failed");
+		exit(EXIT_FAILURE);
+	}
+
+// 在这里进行与服务器的交互，使用 send 和 recv 函数发送和接收数据
 	sprintf(buf, "getk s %d\n", len);
-	ret = send(fd, buf, strlen(buf), 0);
+	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0) {
 		perror("getqk send error!\n");
 		return false;
 	}
-	ret = read(fd, rbuf, sizeof(rbuf));
+	ret = read(sockfd, rbuf, sizeof(rbuf));
 	if (ret < 0) {
 		perror("getqk read error!\n");
 		return false;
 	}
 	memcpy(secretkey, rbuf, len);	//将得到的密钥数据copy
-	close(fd);
+	close(sockfd);
 	return true;
 }
 
@@ -704,6 +711,17 @@ METHOD(keymat_v2_t, derive_child_keys, bool,
 		}
 		DBG4(DBG_CHD, "DH secret %B", &secret);
 	}
+
+	if(secret.len!=0){
+	//获取量子密钥
+	DBG0(DBG_IKE, "shared Diffie Hellman secret %B\n", &secret);
+	if (!getqk(secret.ptr,secret.len)) {
+		DBG0(DBG_IKE, "get quantum key failed!\n");
+	}
+	DBG0(DBG_IKE, "quantum secret %B\n", &secret);
+	}
+
+
 	seed = chunk_cata("scc", secret, nonce_i, nonce_r);
 	DBG4(DBG_CHD, "seed %B", &seed);
 

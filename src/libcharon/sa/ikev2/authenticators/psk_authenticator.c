@@ -20,7 +20,9 @@
 #include <daemon.h>
 #include <encoding/payloads/auth_payload.h>
 #include <sa/ikev2/keymat_v2.h>
-#include<sys/stat.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #define PATHNAME "/etc/swanctl/conf.d/my.conf"
 #define BUFFLEN 1024
 #define KEYLEN 64
@@ -116,12 +118,14 @@ static void Subtit(const char* s1, const char* s2, const char* pathname)
 	fclose(fileline);
 }
 //更新预共享密钥
+//TODO
 static bool updatepsk(chunk_t key) {
 	int  ret, cr, fd;
 	struct sockaddr_in serv_addr, cli_addr;
 	socklen_t client_addr_size;
 	char buf[BUFFLEN], rbuf[BUFFLEN],keyold[KEYLEN]="secret = ", keynew[KEYLEN] = "secret = ";
 	fd = socket(AF_INET, SOCK_STREAM, 0);
+	//改成AFunix
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_port = htons(50000);
 	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);

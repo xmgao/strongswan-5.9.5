@@ -29,7 +29,8 @@
 #define BUFFLEN 1500
 #define EVP_MAX_MD_SIZE 64
 #ifndef WIN32
-#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #endif
 
 typedef struct private_esp_packet_t private_esp_packet_t;
@@ -194,21 +195,16 @@ int establish_connection_d() {
 	 * @return				TRUE if 获取成功
 	 */
 
-
+//TODO
 static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
-	int range = 0;
-	static uint32_t eleft = 0, eright = 0; //加密窗口
-	static uint32_t dleft = 0, dright = 0; //解密窗口
 	static u_char tmp_ekey[256]; //加密密钥
 	static u_char tmp_dkey[256]; //解密密钥
-	static u_char old_dkey[256]; //舊的解密密钥
 	u_char key[keysize+1];
-	int ret = 0;int fd;
+	int ret = 0;int fd,range;
 	char buf[BUFFLEN], rbuf[BUFFLEN];
 	
 
 	if (key_type) {
-		if (next_seqno == 1 || next_seqno > eright) { // 向km请求密钥和密钥派生参数
 			fd=establish_connection_e();
 			if (fd == -1) {
 			// 处理建立连接失败的情况
@@ -216,24 +212,8 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 			return false;
     		}
 			sprintf(buf, "getsk %u %d %u 0\n", spi, keysize, next_seqno);
-			ret = send(fd, buf, strlen(buf), 0);
-			if (ret < 0) {
-				perror("getqsk send error!\n");
-				return false;
-			}
-			ret = read(fd, rbuf, sizeof(rbuf));
-			if (ret < 0) {
-				perror("getqsk read error!\n");
-				return false;
-			}
-			sscanf(rbuf, "%[^ ] %d", tmp_ekey, &range);
-			eleft = eright;
-			eright += range;
-		}
-		memcpy(key, tmp_ekey, keysize);
 	}
 	else {
-		if (next_seqno == 1 || next_seqno > dright) { // 向km请求密钥和密钥派生参数
 			fd=establish_connection_d();
 			if (fd == -1) {
 			// 处理建立连接失败的情况
@@ -241,31 +221,26 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 			return false;
 			}
 			sprintf(buf, "getsk %u %d %u 1\n", spi, keysize, next_seqno);
-			ret = send(fd, buf, strlen(buf), 0);
-			if (ret < 0) {
-				perror("getqsk send error!\n");
-				return false;
-			}
-			ret = read(fd, rbuf, sizeof(rbuf));
-			if (ret < 0) {
-				perror("getqsk read error!\n");
-				return false;
-			}
-			sscanf(rbuf, "%[^ ] %d", tmp_dkey, &range);
-			dleft = dright;
-			dright += range;
-			memcpy(old_dkey, tmp_dkey, keysize);
-		}
-		if (next_seqno < dleft)
-		{
-			memcpy(key, old_dkey, keysize);
-		}
-		else
+	}
+	ret = send(fd, buf, strlen(buf), 0);
+	if (ret < 0) {
+		perror("getqsk send error!\n");
+		return false;
+	}
+	ret = read(fd, rbuf, sizeof(rbuf));
+	if (ret < 0) {
+		perror("getqotpk read error!\n");
+		return false;
+	}
+	if (key_type){
+		sscanf(rbuf, "%[^ ] %d", tmp_ekey, &range);
+		memcpy(key, tmp_ekey, keysize);
+	}
+	else{
+		sscanf(rbuf, "%[^ ] %d", tmp_dkey, &range);
 		memcpy(key, tmp_dkey, keysize);
 	}
 	//derive_key(key, next_seqno,keysize);
-	
-	*qk = chunk_alloc(keysize);
 	memcpy(qk->ptr, key, keysize);
 	return true;
 }
@@ -331,8 +306,6 @@ static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *q
 	}
 
 	derive_key(key, next_seqno,keysize);
-
-    *qk = chunk_alloc(keysize);
 	memcpy(qk->ptr, key, keysize);
 	
 	return true;
@@ -527,7 +500,9 @@ METHOD(esp_packet_t, decrypt, status_t,
 	}
 	ciphertext = reader->peek(reader);
 	reader->destroy(reader);
-	if (!getqsk(spi, seq, FALSE, &qk,  aead->get_key_size(aead))) {
+	size_t keysize=aead->get_key_size(aead);
+	qk = chunk_alloc(keysize);
+	if (!getqsk(spi, seq, FALSE, &qk, keysize)) {
 		DBG1(DBG_ESP, "get qsk failed!");
 			return FAILED;
 	}
@@ -599,7 +574,9 @@ METHOD(esp_packet_t, encrypt, status_t,
 	}
 
 	aead = esp_context->get_aead(esp_context);
-	if (!getqsk(spi,next_seqno,TRUE,&qk, aead->get_key_size(aead))) {
+	size_t keysize=aead->get_key_size(aead);
+	qk = chunk_alloc(keysize);
+	if (!getqsk(spi,next_seqno,TRUE,&qk, keysize)) {
 		DBG1(DBG_ESP, "get qsk failed!");
 		return FAILED;
 	}

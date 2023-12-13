@@ -17,9 +17,10 @@
 
 #include "ipsec.h"
 #include "ipsec_sa.h"
-
 #include <library.h>
 #include <utils/debug.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 typedef struct private_ipsec_sa_t private_ipsec_sa_t;
 
@@ -267,6 +268,38 @@ METHOD(ipsec_sa_t, destroy, void,
 	DESTROY_IF(this->esp_context);
 	free(this);
 }
+//TODO
+//注册新的SPI
+bool SpiRegister(uint32_t spi,bool inbound){
+	int  ret, cr,fd;
+	int BUFFLEN=1500;
+	struct sockaddr_in serv_addr, cli_addr;
+	socklen_t client_addr_size;
+	char buf[BUFFLEN], rbuf[BUFFLEN];
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(50000);
+	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);	//本机地址
+
+	cr = connect(fd, &serv_addr, sizeof(serv_addr)); //连接对方服务器
+	if (cr < 0) {
+		perror("getqk connect error!\n");
+		return false;
+	}
+	sprintf(buf, "SpiRegisterRequest %d %d\n", spi,inbound);
+	ret = send(fd, buf, strlen(buf), 0);
+	if (ret < 0) {
+		perror("SpiRegisterRequest send error!\n");
+		return false;
+	}
+	ret = read(fd, rbuf, sizeof(rbuf));
+	if (ret < 0) {
+		perror("SpiRegisterRequest read error!\n");
+		return false;
+	}
+	return true;
+}
+
 
 /**
  * Described in header.
@@ -339,10 +372,11 @@ ipsec_sa_t *ipsec_sa_create(uint32_t spi, host_t *src, host_t *dst,
 	this->esp_context = esp_context_create(enc_alg, enc_key, int_alg, int_key,
 										   inbound);
 
-	/*
-	DBG1(DBG_CFG, "spi:%.8x,enc_key: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x, int_key: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", ntohl(this->spi), *(enc_key.ptr), *(enc_key.ptr + 1), *(enc_key.ptr + 2), *(enc_key.ptr + 3), *(enc_key.ptr + 4),
-		*(enc_key.ptr + 5), *(enc_key.ptr + 6), *(enc_key.ptr + 7), *(enc_key.ptr + 8), *(enc_key.ptr + 9), *(enc_key.ptr + 10), *(enc_key.ptr + 11), *(enc_key.ptr + 12), *(enc_key.ptr + 13), *(enc_key.ptr + 14), *(enc_key.ptr + 15), *(int_key.ptr + 0), *(int_key.ptr + 1), *(int_key.ptr + 2), *(int_key.ptr + 3), *(int_key.ptr + 4), *(int_key.ptr + 5), *(int_key.ptr + 6), *(int_key.ptr + 7), *(int_key.ptr + 8), *(int_key.ptr + 9), *(int_key.ptr + 10), *(int_key.ptr + 11), *(int_key.ptr + 12), *(int_key.ptr + 13), *(int_key.ptr + 14), *(int_key.ptr + 15), *(int_key.ptr + 16), *(int_key.ptr + 17), *(int_key.ptr + 18), *(int_key.ptr + 19), *(int_key.ptr + 20), *(int_key.ptr + 21), *(int_key.ptr + 22), *(int_key.ptr + 23), *(int_key.ptr + 24), *(int_key.ptr + 25), *(int_key.ptr +26), *(int_key.ptr + 27), *(int_key.ptr + 28), *(int_key.ptr + 29), *(int_key.ptr + 30), *(int_key.ptr + 31));
-	*/
+		//注册SPI
+	if (!SpiRegister(uint32_t spi,bool inbound)) {
+		DBG0(DBG_IKE, "spiregister failed!\n");
+	}
+	
 
 	DBG0(DBG_CFG, "enc_key_len: %d",enc_key.len);
 
