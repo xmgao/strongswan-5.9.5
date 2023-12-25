@@ -21,10 +21,12 @@
 #include <encoding/payloads/auth_payload.h>
 #include <sa/ikev2/keymat_v2.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #define PATHNAME "/etc/swanctl/conf.d/my.conf"
-#define BUFFLEN 1024
+#define socket_path "/tmp/my_socket"	//定义本地套接字路径
+#define BUFFLEN 128
 #define KEYLEN 64
 typedef struct private_psk_authenticator_t private_psk_authenticator_t;
 
@@ -120,35 +122,38 @@ static void Subtit(const char* s1, const char* s2, const char* pathname)
 //更新预共享密钥
 //TODO
 static bool updatepsk(chunk_t key) {
-	int  ret, cr, fd;
-	struct sockaddr_in serv_addr, cli_addr;
-	socklen_t client_addr_size;
+	int  ret;
 	char buf[BUFFLEN], rbuf[BUFFLEN],keyold[KEYLEN]="secret = ", keynew[KEYLEN] = "secret = ";
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	//改成AFunix
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(50000);
-	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);
-
-	cr = connect(fd, &serv_addr, sizeof(serv_addr)); //连接km服务器
-	if (cr < 0) {
-		perror("updatepsk connect error!\n");
-		return false;
+	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sockfd < 0) {
+		perror("socket creation failed");
+		exit(EXIT_FAILURE);
 	}
-	sprintf(buf, "getk s %d\n", (int)key.len);
-	ret = send(fd, buf, strlen(buf), 0);
+
+	struct sockaddr_un server_addr;
+	memset(&server_addr, 0, sizeof(struct sockaddr_un));
+	server_addr.sun_family = AF_UNIX;
+	strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
+
+	int connect_status = connect(sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_un));
+	if (connect_status < 0) {
+		perror("updatepsk connect failed");
+		exit(EXIT_FAILURE);
+	}
+	sprintf(buf, "getsharedkey %d\n", (int)key.len);
+	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0) {
 		perror("updatepsk send error!\n");
 		return false;
 	}
-	ret = read(fd, rbuf, sizeof(rbuf));
+	ret = read(sockfd, rbuf, sizeof(rbuf));
 	rbuf[ret] = '\0';
-	DBG0(DBG_IKE, "quantum key for update psk:%s", rbuf);// 共享密钥
+	DBG0(DBG_IKE, "original psk:%s", key.ptr);
+	DBG0(DBG_IKE, "quantum key for update psk:%s", rbuf);// 预共享密钥
 	strcat(keyold, key.ptr);					//添加到末尾
 	memcpy(keynew + 9, rbuf, (int)key.len);
-	//strcat(keynew, key.ptr);
 	Subtit(keyold, keynew, PATHNAME);
-	close(fd);
+	close(sockfd);
 	return true;
 }
 METHOD(authenticator_t, build, status_t,

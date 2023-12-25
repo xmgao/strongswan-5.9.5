@@ -38,13 +38,13 @@ static void OTP_encrypt( const unsigned char* in, unsigned char* out,unsigned in
 {
     if(enc_flag){
         for (int i = 0; i < len; i++) {
-            out[i] = (in[i] + key[i%key_len]) % 256;
+            out[i] = in[i] ^ key[i];
         }
     }
 
     else{
         for (int i = 0; i < len; i++) {
-            out[i] = (in[i]-key[i%key_len] + 256) % 256;
+            out[i] = in[i] ^ key[i];
         }
     }
 }
@@ -111,7 +111,7 @@ METHOD(crypter_t, get_iv_size, size_t,
 METHOD(crypter_t, get_key_size, size_t,
 	private_otpalg_crypter_t *this)
 {
-	return 1448;
+	return 1480;
 }
 
 METHOD(crypter_t, set_key, bool,

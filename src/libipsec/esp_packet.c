@@ -26,12 +26,13 @@
 #include <bio/bio_writer.h>
 #include <string.h>
 #include <stdio.h>
-#define BUFFLEN 1500
-#define EVP_MAX_MD_SIZE 64
-#ifndef WIN32
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#endif
+#include <stdlib.h> // For malloc, free
+
+#define EVP_MAX_MD_SIZE 64
+#define socket_path "/tmp/my_socket"	//定义本地套接字路径
 
 typedef struct private_esp_packet_t private_esp_packet_t;
 
@@ -61,6 +62,18 @@ struct private_esp_packet_t {
 	uint8_t next_header;
 
 };
+
+#define MAX_SOCKETS 100 // 设定最大的套接字数量
+
+typedef struct {
+    int socket_fd;
+    uint32_t spi;
+	bool key_type;
+} SpiSocketPair;
+
+SpiSocketPair *socket_pairs = NULL;
+int total_sockets = 0;
+
 
 //hkdf
 void compute_hmac_ex(unsigned char* dest, const uint8_t *key, uint32_t klen, const uint8_t *msg, uint32_t mlen)
@@ -106,19 +119,14 @@ void HKDF(const unsigned char *salt, int salt_len,
     }
 }
 
-/**
-	 *派生量子密钥
-	 *
-	 * 通过spi和原始密钥派生
-	 * 
-	 * 
-	 *
-	 * @param key			原始密钥
-	 * @param next_seqno	序列号
-	 * @param keysize		密钥长度
-	 * @return				TRUE if 获取成功
-*/
 
+/**
+ * @description: 派生量子密钥,通过spi和原始密钥派生
+ * @param {unsigned char*} key 原始密钥
+ * @param {int} next_seqno 序列号
+ * @param {int} keysize 密钥长度
+ * @return {*} TRUE if 获取成功
+ */
 static void derive_key(unsigned char* key, int next_seqno,int keysize) {
 	unsigned char salt[32] = {0};
     unsigned char info[32];
@@ -128,120 +136,89 @@ static void derive_key(unsigned char* key, int next_seqno,int keysize) {
     memcpy(key,okm,keysize);
 }
 
-
-int establish_connection_e() {
-	static int socket_fd = -1; // 静态变量用于保存套接字的文件描述符
-    if (socket_fd == -1) {
-        // 第一次调用，创建套接字
-        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (socket_fd == -1) {
-            perror("Failed to create socket");
-            // 处理套接字创建失败的情况
-			return -1;
+//为每个SPI,key_type对返回不同的SOCKET
+int establish_connection(uint32_t spi,bool key_type) {
+  if (socket_pairs == NULL) {
+        socket_pairs = (SpiSocketPair *)malloc(MAX_SOCKETS * sizeof(SpiSocketPair));
+        if (socket_pairs == NULL) {
+            perror("Failed to allocate memory");
+            return -1;
         }
-        // 可以在这里进行套接字的初始化配置
-		struct sockaddr_in serv_addr;
-		serv_addr.sin_family = AF_INET;
-		serv_addr.sin_port = htons(50000);	// 设置服务器端口号
-		inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);// 设置服务器IP地址
-		int connect_result = connect(socket_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
-		if (connect_result == -1) {
-			perror("getqotpk connect error!\n");
-			return -1;
-    	}
-		}
-    return socket_fd;
-}
+    }
 
-int establish_connection_d() {
-	static int socket_fd = -1; // 静态变量用于保存套接字的文件描述符
-    if (socket_fd == -1) {
-        // 第一次调用，创建套接字
-        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (socket_fd == -1) {
-            perror("Failed to create socket");
-            // 处理套接字创建失败的情况
-			return -1;
+    // 检查是否已经存在特定SPI对应的套接字
+    for (int i = 0; i < total_sockets; ++i) {
+        if (socket_pairs[i].spi == spi&&socket_pairs[i].key_type==key_type ) {
+            return socket_pairs[i].socket_fd;
         }
-        // 可以在这里进行套接字的初始化配置
-		struct sockaddr_in serv_addr;
-		serv_addr.sin_family = AF_INET;
-		serv_addr.sin_port = htons(50000);	// 设置服务器端口号
-		inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);// 设置服务器IP地址
-		int connect_result = connect(socket_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
-		if (connect_result == -1) {
-			perror("getqotpk connect error!\n");
-			return -1;
-    	}
-		}
-    return socket_fd;
+    }
+
+    // 创建新的套接字
+    int new_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (new_socket_fd == -1) {
+        perror("Failed to create socket");
+        return -1;
+    }
+
+    struct sockaddr_un serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sun_family = AF_UNIX;
+    strncpy(serv_addr.sun_path, socket_path, sizeof(serv_addr.sun_path) - 1);
+
+    int connect_result = connect(new_socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+    if (connect_result == -1) {
+        perror("getqotpk connect error!\n");
+        return -1;
+    }
+
+    // 存储新创建的套接字
+    socket_pairs[total_sockets].socket_fd = new_socket_fd;
+    socket_pairs[total_sockets].spi = spi;
+	socket_pairs[total_sockets].key_type=key_type;
+    ++total_sockets;
+
+    return new_socket_fd;
 }
 
 
 
-
-/**
-	 *获取量子密钥
-	 *
-	 * 通过spi和序列号获取对应的密钥
-	 * 
-	 * 
-	 *
-	 * @param spi			spi
-	 * @param next_seqno	序列号
-	 * @param key_type		TRUE表示加密，FALSE表示解密
-	 * @param qk			量子密钥存储
-	 * @param keysize		密钥长度
-	 * @return				TRUE if 获取成功
-	 */
 
 //TODO
+/**
+ * @description: 获取量子密钥,通过spi和序列号获取对应的密钥
+ * @param {uint32_t} spi spi
+ * @param {uint32_t} next_seqno 序列号
+ * @param {bool} key_type TRUE表示解密，FALSE表示加密
+ * @param {chunk_t} *qk 量子密钥存储
+ * @param {size_t} keysize 密钥长度
+ * @return {*} TRUE if 获取成功
+ */
 static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
-	static u_char tmp_ekey[256]; //加密密钥
-	static u_char tmp_dkey[256]; //解密密钥
-	u_char key[keysize+1];
-	int ret = 0;int fd,range;
-	char buf[BUFFLEN], rbuf[BUFFLEN];
+	u_char rawkey[keysize+1];
+	int ret = 0;int fd;
+	char buf[128], rbuf[128];
 	
+	fd=establish_connection(spi,key_type);
+	if (fd == -1) {
+	// 处理建立连接失败的情况
+	perror("establish_connection error!\n");
+	return false;
+	}
+	sprintf(buf, "getsk %u %d %u %d\n", spi, keysize, next_seqno,key_type);
 
-	if (key_type) {
-			fd=establish_connection_e();
-			if (fd == -1) {
-			// 处理建立连接失败的情况
-			perror("establish_connection error!\n");
-			return false;
-    		}
-			sprintf(buf, "getsk %u %d %u 0\n", spi, keysize, next_seqno);
-	}
-	else {
-			fd=establish_connection_d();
-			if (fd == -1) {
-			// 处理建立连接失败的情况
-			perror("establish_connection error!\n");
-			return false;
-			}
-			sprintf(buf, "getsk %u %d %u 1\n", spi, keysize, next_seqno);
-	}
 	ret = send(fd, buf, strlen(buf), 0);
 	if (ret < 0) {
-		perror("getqsk send error!\n");
+		perror("getsk send error!\n");
 		return false;
 	}
 	ret = read(fd, rbuf, sizeof(rbuf));
 	if (ret < 0) {
-		perror("getqotpk read error!\n");
+		perror("getsk read error!\n");
 		return false;
 	}
-	if (key_type){
-		sscanf(rbuf, "%[^ ] %d", tmp_ekey, &range);
-		memcpy(key, tmp_ekey, keysize);
-	}
-	else{
-		sscanf(rbuf, "%[^ ] %d", tmp_dkey, &range);
-		memcpy(key, tmp_dkey, keysize);
-	}
-	//derive_key(key, next_seqno,keysize);
-	memcpy(qk->ptr, key, keysize);
+	memcpy(rawkey, rbuf, keysize);
+	//derive_key(rawkey, next_seqno,keysize);
+	memcpy(qk->ptr, rawkey, keysize);
 	return true;
 }
 
@@ -255,40 +232,27 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,
 	 *
 	 * @param spi			spi
 	 * @param next_seqno	序列号
-	 * @param key_type		TRUE表示加密，FALSE表示解密
+	 * @param key_type		TRUE表示解密，FALSE表示加密
 	 * @param qk			量子密钥存储
 	 * @param keysize		密钥长度
 	 * @return				TRUE if 获取成功
 	 */
 static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
-	static u_char tmp_ekey[1025]; //加密密钥
-	static u_char tmp_dkey[1025]; //解密密钥
-	u_char key[keysize+1];
-	int ret = 0,M_size;
-
-	char buf[BUFFLEN], rbuf[BUFFLEN];
+	u_char rawkey[keysize+1];
+	int ret = 0;
+	char buf[128], rbuf[128];
 	int fd;
-	if (key_type){
-		sprintf(buf, "getotpk %u %u 0\n", spi, next_seqno);
-		fd=establish_connection_e();
-		 if (fd == -1) {
-        // 处理建立连接失败的情况
-        perror("establish_connection error!\n");
-		return false;
-    	}
+	fd=establish_connection(spi,key_type);
+	if (fd == -1) {
+	// 处理建立连接失败的情况
+	perror("establish_connection error!\n");
+	return false;
 	}
-	else{
-		sprintf(buf, "getotpk %u %u 1\n", spi, next_seqno);
-		fd=establish_connection_d();
-		 if (fd == -1) {
-        // 处理建立连接失败的情况
-        perror("establish_connection error!\n");
-		return false;
-    	}
-	}
+	sprintf(buf, "getotpk %u %u %d\n", spi,next_seqno,key_type);
+
 	ret = send(fd, buf, strlen(buf), 0);
 	if (ret < 0) {
-		perror("getqotpk send error!\n");
+		perror("getotpk send error!\n");
 		return false;
 	}
 	ret = read(fd, rbuf, sizeof(rbuf));
@@ -296,17 +260,9 @@ static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *q
 		perror("getqotpk read error!\n");
 		return false;
 	}
-	if (key_type){
-		sscanf(rbuf, "%[^ ] %d", tmp_ekey, &M_size);
-		memcpy(key, tmp_ekey, keysize);
-	}
-	else{
-		sscanf(rbuf, "%[^ ] %d", tmp_dkey, &M_size);
-		memcpy(key, tmp_dkey, keysize);
-	}
-
-	derive_key(key, next_seqno,keysize);
-	memcpy(qk->ptr, key, keysize);
+	memcpy(rawkey, rbuf, 128);
+	derive_key(rawkey, next_seqno,keysize);
+	memcpy(qk->ptr, rawkey, keysize);
 	
 	return true;
 }
@@ -502,7 +458,7 @@ METHOD(esp_packet_t, decrypt, status_t,
 	reader->destroy(reader);
 	size_t keysize=aead->get_key_size(aead);
 	qk = chunk_alloc(keysize);
-	if (!getqsk(spi, seq, FALSE, &qk, keysize)) {
+	if (!getqsk(spi, seq, TRUE, &qk, keysize)) {
 		DBG1(DBG_ESP, "get qsk failed!");
 			return FAILED;
 	}
@@ -576,7 +532,7 @@ METHOD(esp_packet_t, encrypt, status_t,
 	aead = esp_context->get_aead(esp_context);
 	size_t keysize=aead->get_key_size(aead);
 	qk = chunk_alloc(keysize);
-	if (!getqsk(spi,next_seqno,TRUE,&qk, keysize)) {
+	if (!getqsk(spi,next_seqno,FALSE,&qk, keysize)) {
 		DBG1(DBG_ESP, "get qsk failed!");
 		return FAILED;
 	}

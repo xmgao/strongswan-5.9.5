@@ -15,12 +15,14 @@
  */
 
 #include "keymat_v2.h"
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <daemon.h>
 #include <crypto/prf_plus.h>
 #include <crypto/hashers/hash_algorithm_set.h>
-#define BUFFLEN 1024
+#define socket_path "/tmp/my_socket"	//定义本地套接字路径
+#define BUFFLEN 128
 typedef struct private_keymat_v2_t private_keymat_v2_t;
 
 /**
@@ -289,6 +291,7 @@ failure:
 	DESTROY_IF(crypter_r);
 	return this->aead_in && this->aead_out;
 }
+//TODO
 //获取量子密钥
 static bool getqk(char *secretkey, size_t len){
 	int  ret;
@@ -302,7 +305,7 @@ static bool getqk(char *secretkey, size_t len){
 	struct sockaddr_un server_addr;
 	memset(&server_addr, 0, sizeof(struct sockaddr_un));
 	server_addr.sun_family = AF_UNIX;
-	strncpy(server_addr.sun_path, "socket_path", sizeof(server_addr.sun_path) - 1);
+	strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
 
 	int connect_status = connect(sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_un));
 	if (connect_status < 0) {
@@ -311,7 +314,7 @@ static bool getqk(char *secretkey, size_t len){
 	}
 
 // 在这里进行与服务器的交互，使用 send 和 recv 函数发送和接收数据
-	sprintf(buf, "getk s %d\n", len);
+	sprintf(buf, "getsharedkey %d\n", len);
 	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0) {
 		perror("getqk send error!\n");

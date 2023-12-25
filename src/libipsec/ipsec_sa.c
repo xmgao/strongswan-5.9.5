@@ -19,8 +19,10 @@
 #include "ipsec_sa.h"
 #include <library.h>
 #include <utils/debug.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#define socket_path "/tmp/my_socket"	//定义本地套接字路径
 
 typedef struct private_ipsec_sa_t private_ipsec_sa_t;
 
@@ -269,31 +271,33 @@ METHOD(ipsec_sa_t, destroy, void,
 	free(this);
 }
 //TODO
-//注册新的SPI
-bool SpiRegister(uint32_t spi,bool inbound){
-	int  ret, cr,fd;
-	int BUFFLEN=1500;
-	struct sockaddr_in serv_addr, cli_addr;
-	socklen_t client_addr_size;
-	char buf[BUFFLEN], rbuf[BUFFLEN];
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(50000);
-	inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr.s_addr);	//本机地址
-
-	cr = connect(fd, &serv_addr, sizeof(serv_addr)); //连接对方服务器
-	if (cr < 0) {
-		perror("getqk connect error!\n");
-		return false;
+//注册新的SA
+bool ipsec_sa_register(uint32_t spi,bool inbound){
+	int  ret;
+	char buf[128], rbuf[128];
+	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sockfd < 0) {
+		perror("socket creation failed");
+		exit(EXIT_FAILURE);
 	}
-	sprintf(buf, "SpiRegisterRequest %d %d\n", spi,inbound);
-	ret = send(fd, buf, strlen(buf), 0);
+	struct sockaddr_un server_addr;
+	memset(&server_addr, 0, sizeof(struct sockaddr_un));
+	server_addr.sun_family = AF_UNIX;
+	strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
+
+	int connect_status = connect(sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_un));
+	if (connect_status < 0) {
+		perror("connect failed");
+		exit(EXIT_FAILURE);
+	}
+	sprintf(buf, "spiregister %u %d\n", spi,inbound);
+	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0) {
 		perror("SpiRegisterRequest send error!\n");
 		return false;
 	}
-	ret = read(fd, rbuf, sizeof(rbuf));
-	if (ret < 0) {
+	ret = read(sockfd, rbuf, sizeof(rbuf));
+	if (ret <= 0) {
 		perror("SpiRegisterRequest read error!\n");
 		return false;
 	}
@@ -373,12 +377,10 @@ ipsec_sa_t *ipsec_sa_create(uint32_t spi, host_t *src, host_t *dst,
 										   inbound);
 
 		//注册SPI
-	if (!SpiRegister(uint32_t spi,bool inbound)) {
-		DBG0(DBG_IKE, "spiregister failed!\n");
+	if (!ipsec_sa_register(spi, inbound)) {
+		DBG0(DBG_CFG, "spiregister failed!\n");
 	}
 	
-
-	DBG0(DBG_CFG, "enc_key_len: %d",enc_key.len);
 
 	if (!this->esp_context)
 	{
