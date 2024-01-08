@@ -270,7 +270,7 @@ METHOD(ipsec_sa_t, destroy, void,
 	DESTROY_IF(this->esp_context);
 	free(this);
 }
-//TODO
+
 //×¢²áÐÂµÄSA
 bool ipsec_sa_register(uint32_t spi,bool inbound){
 	int  ret;
@@ -294,11 +294,6 @@ bool ipsec_sa_register(uint32_t spi,bool inbound){
 	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0) {
 		perror("SpiRegisterRequest send error!\n");
-		return false;
-	}
-	ret = read(sockfd, rbuf, sizeof(rbuf));
-	if (ret <= 0) {
-		perror("SpiRegisterRequest read error!\n");
 		return false;
 	}
 	return true;

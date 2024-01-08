@@ -24,10 +24,12 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#define PATHNAME "/etc/swanctl/conf.d/my.conf"
+#include <string.h>
+
+
 #define socket_path "/tmp/my_socket"	//¶¨Òå±¾µØÌ×½Ó×ÖÂ·¾¶
 #define BUFFLEN 128
-#define KEYLEN 64
+
 typedef struct private_psk_authenticator_t private_psk_authenticator_t;
 
 /**
@@ -70,60 +72,59 @@ struct private_psk_authenticator_t {
 	 */
 	bool no_ppk_auth;
 };
-//Ìæ»»ÃÜÔ¿
-static void Subtit(const char* s1, const char* s2, const char* pathname)
-{
 
-	int len_s1 = strlen(s1);
-	int len_s2 = strlen(s2);
-	FILE* fileline = fopen(pathname, "r+");
 
-	if (fileline == NULL)
-	{
-		perror("Fopen error!");
-		exit(0);
-	}
-	struct stat filestate;
-	stat(pathname, &filestate);
-	char* filebuffer = (char*)malloc(sizeof(char) * (filestate.st_size + 1));
-	for (int i = 0, ch = 0; ch != EOF; i++)
-	{
-		ch = fgetc(fileline);
-		filebuffer[i] = ch;
-	}
-	fseek(fileline, 0, SEEK_SET);
-	for (char* index_1 = filebuffer, *index_2 = filebuffer;;)
-	{
-		index_2 = strstr(index_1, s1);	//ÕÒÑ°Î»ÖÃ
-		if (index_2)
-		{
-			for (int i = 0; i < index_2 - index_1; i++)
-			{
-				fputc(index_1[i], fileline);
-			}
-			for (int i = 0; i < len_s2; i++)
-			{
-				fputc(s2[i], fileline);
-			}
-			index_1 = index_2 + len_s1;
-		}
-		else
-		{
-			while (*index_1 != EOF)
-			{
-				fputc(*index_1++, fileline);
-			}
-			break;
-		}
-	}
-	free(filebuffer);
-	fclose(fileline);
+
+void replaceSecret(const char *filename, const char *newSecret) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        printf("Error opening file.\n");
+        return;
+    }
+
+    FILE *tempFile = fopen("temp.conf", "w");
+    if (tempFile == NULL) {
+        fclose(file);
+        printf("Error creating temporary file.\n");
+        return;
+    }
+
+    char line[1000];
+    const char *searchStr = "secret =";
+    size_t searchStrLen = strlen(searchStr);
+
+    while (fgets(line, sizeof(line), file)) {
+        char *pos = strstr(line, searchStr);
+        if (pos != NULL) {
+            fprintf(tempFile, "%.*s%s\n", (int)(pos - line) + searchStrLen, line, newSecret);
+        } else {
+            fprintf(tempFile, "%s", line);
+        }
+    }
+
+    fclose(file);
+    fclose(tempFile);
+
+    // Rename the temporary file to the original filename
+    remove(filename);
+    rename("temp.conf", filename);
 }
+
+
+
+void convertToHexString(const char *rbuf, char *newSecret, size_t newSize) {
+    int i, index = 2;
+    for (i = 0; i < newSize && rbuf[i] != '\0'; i++) {
+        index += snprintf(newSecret + index, newSize - index, "%02x", (unsigned char)rbuf[i]);
+    }
+    
+}
+
 //¸üÐÂÔ¤¹²ÏíÃÜÔ¿
 //TODO
 static bool updatepsk(chunk_t key) {
 	int  ret;
-	char buf[BUFFLEN], rbuf[BUFFLEN],keyold[KEYLEN]="secret = ", keynew[KEYLEN] = "secret = ";
+	char buf[BUFFLEN], rbuf[BUFFLEN];
 	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (sockfd < 0) {
 		perror("socket creation failed");
@@ -148,12 +149,15 @@ static bool updatepsk(chunk_t key) {
 	}
 	ret = read(sockfd, rbuf, sizeof(rbuf));
 	rbuf[ret] = '\0';
-	DBG0(DBG_IKE, "original psk:%s", key.ptr);
-	DBG0(DBG_IKE, "quantum key for update psk:%s", rbuf);// Ô¤¹²ÏíÃÜÔ¿
-	strcat(keyold, key.ptr);					//Ìí¼Óµ½Ä©Î²
-	memcpy(keynew + 9, rbuf, (int)key.len);
-	Subtit(keyold, keynew, PATHNAME);
 	close(sockfd);
+	DBG0(DBG_IKE, "quantum key for update psk:%s", rbuf);// Ô¤¹²ÏíÃÜÔ¿
+	char newSecret[128] = "0x"; // Initialize with "0x" prefix
+    convertToHexString(rbuf, newSecret, sizeof(newSecret));
+    const char *configFile = "/etc/swanctl/conf.d/my.conf";
+
+    replaceSecret(configFile, newSecret);
+
+
 	return true;
 }
 METHOD(authenticator_t, build, status_t,
@@ -183,7 +187,7 @@ METHOD(authenticator_t, build, status_t,
 		key->destroy(key);
 		return FAILED;
 	}
-	DBG0(DBG_IKE, "pre-shared key:%s", key->get_key(key).ptr);// ¹²ÏíÃÜÔ¿
+	DBG0(DBG_IKE, "pre-shared key:%B", key->get_key(key).ptr);// ¹²ÏíÃÜÔ¿
 	DBG2(DBG_IKE, "successfully created shared key MAC");
 	auth_payload = auth_payload_create();
 	auth_payload->set_auth_method(auth_payload, AUTH_PSK);

@@ -11,7 +11,8 @@ typedef struct private_otpalg_crypter_t private_otpalg_crypter_t;
 /**
  * Class implementing the OTP symmetric encryption algorithm.
  */
-struct private_otpalg_crypter_t {
+struct private_otpalg_crypter_t
+{
 
 	/**
 	 * Public part of this class.
@@ -21,8 +22,7 @@ struct private_otpalg_crypter_t {
 	/*
 	 * the key
 	 */
-	chunk_t	key;
-
+	chunk_t key;
 };
 
 /**
@@ -34,25 +34,17 @@ struct private_otpalg_crypter_t {
  * key_len:otpalg key lenth
  * enc_flag:    1,encrypt;0,decrypt
  */
-static void OTP_encrypt( const unsigned char* in, unsigned char* out,unsigned int len,unsigned char *key,unsigned int key_len,bool enc_flag)
+static void OTP_encrypt(const unsigned char *in, unsigned char *out, unsigned int len, unsigned char *key, unsigned int key_len)
 {
-    if(enc_flag){
-        for (int i = 0; i < len; i++) {
-            out[i] = in[i] ^ key[i];
-        }
-    }
-
-    else{
-        for (int i = 0; i < len; i++) {
-            out[i] = in[i] ^ key[i];
-        }
-    }
+	for (int i = 0; i < len && i < key_len; i++)
+	{
+		out[i] = in[i] ^ key[i];
+	}
 }
 
-
 METHOD(crypter_t, decrypt, bool,
-	private_otpalg_crypter_t *this, chunk_t data, chunk_t iv,
-	chunk_t *decrypted)
+	   private_otpalg_crypter_t *this, chunk_t data, chunk_t iv,
+	   chunk_t *decrypted)
 {
 	uint8_t *in, *out;
 
@@ -67,15 +59,14 @@ METHOD(crypter_t, decrypt, bool,
 	}
 	in = data.ptr;
 
-	OTP_encrypt(in, out, data.len, this->key.ptr,this->key.len,0);
-
+	OTP_encrypt(in, out, data.len, this->key.ptr, this->key.len);
 
 	return TRUE;
 }
 
 METHOD(crypter_t, encrypt, bool,
-	private_otpalg_crypter_t *this, chunk_t data, chunk_t iv,
-	chunk_t *encrypted)
+	   private_otpalg_crypter_t *this, chunk_t data, chunk_t iv,
+	   chunk_t *encrypted)
 {
 	uint8_t *in, *out;
 
@@ -90,44 +81,43 @@ METHOD(crypter_t, encrypt, bool,
 	}
 	in = data.ptr;
 
-	OTP_encrypt(in, out, data.len, this->key.ptr,this->key.len,1);
-
+	OTP_encrypt(in, out, data.len, this->key.ptr, this->key.len);
 
 	return TRUE;
 }
 
 METHOD(crypter_t, get_block_size, size_t,
-	private_otpalg_crypter_t *this)
+	   private_otpalg_crypter_t *this)
 {
 	return OTP_BLOCK_SIZE;
 }
 
 METHOD(crypter_t, get_iv_size, size_t,
-	private_otpalg_crypter_t *this)
+	   private_otpalg_crypter_t *this)
 {
 	return OTP_BLOCK_SIZE;
 }
 
 METHOD(crypter_t, get_key_size, size_t,
-	private_otpalg_crypter_t *this)
+	   private_otpalg_crypter_t *this)
 {
 	return 1480;
 }
 
 METHOD(crypter_t, set_key, bool,
-	private_otpalg_crypter_t *this, chunk_t key)
-{   
-    chunk_clear(&this->key);
-    this->key = chunk_alloc(key.len);
+	   private_otpalg_crypter_t *this, chunk_t key)
+{
+	chunk_clear(&this->key);
+	this->key = chunk_alloc(key.len);
 	memcpy(this->key.ptr, key.ptr, key.len);
-    //this->key=chunk_create(key.ptr,key.len);
+	// this->key=chunk_create(key.ptr,key.len);
 	return TRUE;
 }
 
 METHOD(crypter_t, destroy, void,
-	private_otpalg_crypter_t *this)
-{   
-    chunk_clear(&this->key);
+	   private_otpalg_crypter_t *this)
+{
+	chunk_clear(&this->key);
 	free(this);
 }
 
@@ -135,7 +125,7 @@ METHOD(crypter_t, destroy, void,
  * Described in header
  */
 otpalg_crypter_t *otpalg_crypter_create(encryption_algorithm_t algo,
-											size_t key_size)
+										size_t key_size)
 {
 	private_otpalg_crypter_t *this;
 
@@ -145,18 +135,17 @@ otpalg_crypter_t *otpalg_crypter_create(encryption_algorithm_t algo,
 	// }
 
 	INIT(this,
-		.public = {
-			.crypter = {
-				.encrypt = _encrypt,
-				.decrypt = _decrypt,
-				.get_block_size = _get_block_size,
-				.get_iv_size = _get_iv_size,
-				.get_key_size = _get_key_size,
-				.set_key = _set_key,
-				.destroy = _destroy,
-			},
-		},
-	);
-    this->key = chunk_alloc(key_size);
+		 .public = {
+			 .crypter = {
+				 .encrypt = _encrypt,
+				 .decrypt = _decrypt,
+				 .get_block_size = _get_block_size,
+				 .get_iv_size = _get_iv_size,
+				 .get_key_size = _get_key_size,
+				 .set_key = _set_key,
+				 .destroy = _destroy,
+			 },
+		 }, );
+	this->key = chunk_alloc(key_size);
 	return &this->public;
 }

@@ -15,7 +15,6 @@
  * for more details.
  */
 
-
 #include "esp_packet.h"
 #include "sha256hmac.h"
 #include <library.h>
@@ -32,14 +31,15 @@
 #include <stdlib.h> // For malloc, free
 
 #define EVP_MAX_MD_SIZE 64
-#define socket_path "/tmp/my_socket"	//定义本地套接字路径
+#define socket_path "/tmp/my_socket" // 定义本地套接字路径
 
 typedef struct private_esp_packet_t private_esp_packet_t;
 
 /**
  * Private additions to esp_packet_t.
  */
-struct private_esp_packet_t {
+struct private_esp_packet_t
+{
 
 	/**
 	 * Public members
@@ -60,65 +60,66 @@ struct private_esp_packet_t {
 	 * Next Header info (e.g. IPPROTO_IPIP)
 	 */
 	uint8_t next_header;
-
 };
 
 #define MAX_SOCKETS 100 // 设定最大的套接字数量
 
-typedef struct {
-    int socket_fd;
-    uint32_t spi;
+typedef struct
+{
+	int socket_fd;
+	uint32_t spi;
 	bool key_type;
 } SpiSocketPair;
 
 SpiSocketPair *socket_pairs = NULL;
 int total_sockets = 0;
 
-
-//hkdf
-void compute_hmac_ex(unsigned char* dest, const uint8_t *key, uint32_t klen, const uint8_t *msg, uint32_t mlen)
-	{
-		uint8_t md[SHA256_DIGESTLEN] = {0};
-		HMAC_SHA256_CTX hmac;
-		hmac_sha256_init(&hmac, key, klen);
-		hmac_sha256_update(&hmac, msg, mlen);
-		hmac_sha256_final(&hmac, md);
-		memcpy(dest, md, SHA256_DIGESTLEN);
-	}
- 
-
-void HKDF(const unsigned char *salt, int salt_len,
-          const unsigned char *ikm, int ikm_len,
-          const unsigned char *info, int info_len,
-          unsigned char *okm, int okm_len)
+// hkdf
+void compute_hmac_ex(unsigned char *dest, const uint8_t *key, uint32_t klen, const uint8_t *msg, uint32_t mlen)
 {
-    unsigned char prk[EVP_MAX_MD_SIZE];
-	compute_hmac_ex(prk, (const uint8_t *)salt, salt_len, (const uint8_t *)ikm, ikm_len);
-    unsigned char prev[EVP_MAX_MD_SIZE];
-    memset(prev, 0x00, EVP_MAX_MD_SIZE);
-
-    int iter = (okm_len + 31) / 32;
-
-    for (int i = 0; i < iter; i++) {
-        unsigned char hmac_input[EVP_MAX_MD_SIZE];
-        if (i == 0) {
-            memcpy(hmac_input, info, info_len);
-            hmac_input[info_len] = 0x01;
-        } else {
-            memcpy(hmac_input, prev, 32);
-            memcpy(hmac_input + 32, info, info_len);
-            hmac_input[32 + info_len] = i + 1;
-        }
-
-        unsigned char hmac_out[EVP_MAX_MD_SIZE];
-		compute_hmac_ex(hmac_out, (const uint8_t *)prk, 32, (const uint8_t *)hmac_input, info_len + 32 * (i == 0 ? 0 : 1)+1);
-
-        memcpy(prev, hmac_out, 32);
-        memcpy(okm + i * 32, hmac_out,
-               (i == iter - 1) ? okm_len - i * 32 : 32);
-    }
+	uint8_t md[SHA256_DIGESTLEN] = {0};
+	HMAC_SHA256_CTX hmac;
+	hmac_sha256_init(&hmac, key, klen);
+	hmac_sha256_update(&hmac, msg, mlen);
+	hmac_sha256_final(&hmac, md);
+	memcpy(dest, md, SHA256_DIGESTLEN);
 }
 
+void HKDF(const unsigned char *salt, int salt_len,
+		  const unsigned char *ikm, int ikm_len,
+		  const unsigned char *info, int info_len,
+		  unsigned char *okm, int okm_len)
+{
+	unsigned char prk[EVP_MAX_MD_SIZE];
+	compute_hmac_ex(prk, (const uint8_t *)salt, salt_len, (const uint8_t *)ikm, ikm_len);
+	unsigned char prev[EVP_MAX_MD_SIZE];
+	memset(prev, 0x00, EVP_MAX_MD_SIZE);
+
+	int iter = (okm_len + 31) / 32;
+
+	for (int i = 0; i < iter; i++)
+	{
+		unsigned char hmac_input[EVP_MAX_MD_SIZE];
+		if (i == 0)
+		{
+			memcpy(hmac_input, info, info_len);
+			hmac_input[info_len] = 0x01;
+		}
+		else
+		{
+			memcpy(hmac_input, prev, 32);
+			memcpy(hmac_input + 32, info, info_len);
+			hmac_input[32 + info_len] = i + 1;
+		}
+
+		unsigned char hmac_out[EVP_MAX_MD_SIZE];
+		compute_hmac_ex(hmac_out, (const uint8_t *)prk, 32, (const uint8_t *)hmac_input, info_len + 32 * (i == 0 ? 0 : 1) + 1);
+
+		memcpy(prev, hmac_out, 32);
+		memcpy(okm + i * 32, hmac_out,
+			   (i == iter - 1) ? okm_len - i * 32 : 32);
+	}
+}
 
 /**
  * @description: 派生量子密钥,通过spi和原始密钥派生
@@ -127,63 +128,68 @@ void HKDF(const unsigned char *salt, int salt_len,
  * @param {int} keysize 密钥长度
  * @return {*} TRUE if 获取成功
  */
-static void derive_key(unsigned char* key, int next_seqno,int keysize) {
+static void derive_key(unsigned char *key, int rawkeysize, int next_seqno, int keysize)
+{
 	unsigned char salt[32] = {0};
-    unsigned char info[32];
-    unsigned char okm[keysize];
+	unsigned char info[32];
+	unsigned char okm[keysize];
 	sprintf(info, "%d", next_seqno);
-	HKDF(salt, sizeof(salt), key, strlen(key), info, strlen(info), okm, sizeof(okm));
-    memcpy(key,okm,keysize);
+	HKDF(salt, sizeof(salt) - 1, key, rawkeysize, info, strlen(info), okm, sizeof(okm));
+	memcpy(key, okm, keysize);
 }
 
-//为每个SPI,key_type对返回不同的SOCKET
-int establish_connection(uint32_t spi,bool key_type) {
-  if (socket_pairs == NULL) {
-        socket_pairs = (SpiSocketPair *)malloc(MAX_SOCKETS * sizeof(SpiSocketPair));
-        if (socket_pairs == NULL) {
-            perror("Failed to allocate memory");
-            return -1;
-        }
-    }
+// 为每个SPI,key_type对返回不同的SOCKET
+int establish_connection(uint32_t spi, bool key_type)
+{
+	if (socket_pairs == NULL)
+	{
+		socket_pairs = (SpiSocketPair *)malloc(MAX_SOCKETS * sizeof(SpiSocketPair));
+		if (socket_pairs == NULL)
+		{
+			perror("Failed to allocate memory");
+			return -1;
+		}
+	}
 
-    // 检查是否已经存在特定SPI对应的套接字
-    for (int i = 0; i < total_sockets; ++i) {
-        if (socket_pairs[i].spi == spi&&socket_pairs[i].key_type==key_type ) {
-            return socket_pairs[i].socket_fd;
-        }
-    }
+	// 检查是否已经存在特定SPI对应的套接字
+	for (int i = 0; i < total_sockets; ++i)
+	{
+		if (socket_pairs[i].spi == spi && socket_pairs[i].key_type == key_type)
+		{
+			return socket_pairs[i].socket_fd;
+		}
+	}
 
-    // 创建新的套接字
-    int new_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (new_socket_fd == -1) {
-        perror("Failed to create socket");
-        return -1;
-    }
+	// 创建新的套接字
+	int new_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (new_socket_fd == -1)
+	{
+		perror("Failed to create socket");
+		return -1;
+	}
 
-    struct sockaddr_un serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, socket_path, sizeof(serv_addr.sun_path) - 1);
+	struct sockaddr_un serv_addr;
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sun_family = AF_UNIX;
+	strncpy(serv_addr.sun_path, socket_path, sizeof(serv_addr.sun_path) - 1);
 
-    int connect_result = connect(new_socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if (connect_result == -1) {
-        perror("getqotpk connect error!\n");
-        return -1;
-    }
+	int connect_result = connect(new_socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+	if (connect_result == -1)
+	{
+		perror("getqotpk connect error!\n");
+		return -1;
+	}
 
-    // 存储新创建的套接字
-    socket_pairs[total_sockets].socket_fd = new_socket_fd;
-    socket_pairs[total_sockets].spi = spi;
-	socket_pairs[total_sockets].key_type=key_type;
-    ++total_sockets;
+	// 存储新创建的套接字
+	socket_pairs[total_sockets].socket_fd = new_socket_fd;
+	socket_pairs[total_sockets].spi = spi;
+	socket_pairs[total_sockets].key_type = key_type;
+	++total_sockets;
 
-    return new_socket_fd;
+	return new_socket_fd;
 }
 
-
-
-
-//TODO
+// TODO
 /**
  * @description: 获取量子密钥,通过spi和序列号获取对应的密钥
  * @param {uint32_t} spi spi
@@ -193,77 +199,85 @@ int establish_connection(uint32_t spi,bool key_type) {
  * @param {size_t} keysize 密钥长度
  * @return {*} TRUE if 获取成功
  */
-static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
-	u_char rawkey[keysize+1];
-	int ret = 0;int fd;
+static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk, size_t keysize)
+{
+	u_char rawkey[keysize + 1];
+	int ret = 0;
+	int fd;
 	char buf[128], rbuf[128];
-	
-	fd=establish_connection(spi,key_type);
-	if (fd == -1) {
-	// 处理建立连接失败的情况
-	perror("establish_connection error!\n");
-	return false;
+
+	fd = establish_connection(spi, key_type);
+	if (fd == -1)
+	{
+		// 处理建立连接失败的情况
+		perror("establish_connection error!\n");
+		return false;
 	}
-	sprintf(buf, "getsk %u %d %u %d\n", spi, keysize, next_seqno,key_type);
+	sprintf(buf, "getsk %u %d %u %d\n", spi, keysize, next_seqno, key_type);
 
 	ret = send(fd, buf, strlen(buf), 0);
-	if (ret < 0) {
+	if (ret < 0)
+	{
 		perror("getsk send error!\n");
 		return false;
 	}
 	ret = read(fd, rbuf, sizeof(rbuf));
-	if (ret < 0) {
+	if (ret < 0)
+	{
 		perror("getsk read error!\n");
 		return false;
 	}
-	memcpy(rawkey, rbuf, keysize);
-	//derive_key(rawkey, next_seqno,keysize);
+	memcpy(rawkey, rbuf, ret);
+	derive_key(rawkey, ret, next_seqno, keysize);
 	memcpy(qk->ptr, rawkey, keysize);
 	return true;
 }
 
-
 /**
-	 *获取量子OTP密钥
-	 *
-	 * 通过spi和序列号获取对应的密钥
-	 * 
-	 * 
-	 *
-	 * @param spi			spi
-	 * @param next_seqno	序列号
-	 * @param key_type		TRUE表示解密，FALSE表示加密
-	 * @param qk			量子密钥存储
-	 * @param keysize		密钥长度
-	 * @return				TRUE if 获取成功
-	 */
-static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *qk,size_t keysize) {
-	u_char rawkey[keysize+1];
+ *获取量子OTP密钥
+ *
+ * 通过spi和序列号获取对应的密钥
+ *
+ *
+ *
+ * @param spi			spi
+ * @param next_seqno	序列号
+ * @param key_type		TRUE表示解密，FALSE表示加密
+ * @param qk			量子密钥存储
+ * @param keysize		密钥长度
+ * @return				TRUE if 获取成功
+ */
+static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk, size_t keysize)
+{
+	u_char rawkey[keysize + 1];
 	int ret = 0;
 	char buf[128], rbuf[128];
 	int fd;
-	fd=establish_connection(spi,key_type);
-	if (fd == -1) {
-	// 处理建立连接失败的情况
-	perror("establish_connection error!\n");
-	return false;
+	fd = establish_connection(spi, key_type);
+	if (fd == -1)
+	{
+		// 处理建立连接失败的情况
+		perror("establish_connection error!\n");
+		return false;
 	}
-	sprintf(buf, "getotpk %u %u %d\n", spi,next_seqno,key_type);
+	sprintf(buf, "getotpk %u %u %d\n", spi, next_seqno, key_type);
 
 	ret = send(fd, buf, strlen(buf), 0);
-	if (ret < 0) {
+	if (ret < 0)
+	{
 		perror("getotpk send error!\n");
 		return false;
 	}
 	ret = read(fd, rbuf, sizeof(rbuf));
-	if (ret < 0) {
+	if (ret < 0)
+	{
 		perror("getqotpk read error!\n");
 		return false;
 	}
-	memcpy(rawkey, rbuf, 128);
-	derive_key(rawkey, next_seqno,keysize);
+	memcpy(rawkey, rbuf, ret);
+	derive_key(rawkey, ret, next_seqno, keysize);
 	memcpy(qk->ptr, rawkey, keysize);
-	
+
 	return true;
 }
 
@@ -273,73 +287,73 @@ static bool getqotpk(uint32_t spi, uint32_t next_seqno, bool key_type,chunk_t *q
 static private_esp_packet_t *esp_packet_create_internal(packet_t *packet);
 
 METHOD(packet_t, set_source, void,
-	private_esp_packet_t *this, host_t *src)
+	   private_esp_packet_t *this, host_t *src)
 {
 	return this->packet->set_source(this->packet, src);
 }
 
-METHOD2(esp_packet_t, packet_t, get_source, host_t*,
-	private_esp_packet_t *this)
+METHOD2(esp_packet_t, packet_t, get_source, host_t *,
+		private_esp_packet_t *this)
 {
 	return this->packet->get_source(this->packet);
 }
 
 METHOD(packet_t, set_destination, void,
-	private_esp_packet_t *this, host_t *dst)
+	   private_esp_packet_t *this, host_t *dst)
 {
 	return this->packet->set_destination(this->packet, dst);
 }
 
-METHOD2(esp_packet_t, packet_t, get_destination, host_t*,
-	private_esp_packet_t *this)
+METHOD2(esp_packet_t, packet_t, get_destination, host_t *,
+		private_esp_packet_t *this)
 {
 	return this->packet->get_destination(this->packet);
 }
 
 METHOD(packet_t, get_data, chunk_t,
-	private_esp_packet_t *this)
+	   private_esp_packet_t *this)
 {
 	return this->packet->get_data(this->packet);
 }
 
 METHOD(packet_t, set_data, void,
-	private_esp_packet_t *this, chunk_t data)
+	   private_esp_packet_t *this, chunk_t data)
 {
 	return this->packet->set_data(this->packet, data);
 }
 
 METHOD(packet_t, get_dscp, uint8_t,
-	private_esp_packet_t *this)
+	   private_esp_packet_t *this)
 {
 	return this->packet->get_dscp(this->packet);
 }
 
 METHOD(packet_t, set_dscp, void,
-	private_esp_packet_t *this, uint8_t value)
+	   private_esp_packet_t *this, uint8_t value)
 {
 	this->packet->set_dscp(this->packet, value);
 }
 
-METHOD(packet_t, get_metadata, metadata_t*,
-	private_esp_packet_t *this, const char *key)
+METHOD(packet_t, get_metadata, metadata_t *,
+	   private_esp_packet_t *this, const char *key)
 {
 	return this->packet->get_metadata(this->packet, key);
 }
 
 METHOD(packet_t, set_metadata, void,
-	private_esp_packet_t *this, const char *key, metadata_t *data)
+	   private_esp_packet_t *this, const char *key, metadata_t *data)
 {
 	this->packet->set_metadata(this->packet, key, data);
 }
 
 METHOD(packet_t, skip_bytes, void,
-	private_esp_packet_t *this, size_t bytes)
+	   private_esp_packet_t *this, size_t bytes)
 {
 	return this->packet->skip_bytes(this->packet, bytes);
 }
 
-METHOD(packet_t, clone_, packet_t*,
-	private_esp_packet_t *this)
+METHOD(packet_t, clone_, packet_t *,
+	   private_esp_packet_t *this)
 {
 	private_esp_packet_t *pkt;
 
@@ -350,7 +364,7 @@ METHOD(packet_t, clone_, packet_t*,
 }
 
 METHOD(esp_packet_t, parse_header, bool,
-	private_esp_packet_t *this, uint32_t *spi)
+	   private_esp_packet_t *this, uint32_t *spi)
 {
 	bio_reader_t *reader;
 	uint32_t seq;
@@ -420,7 +434,8 @@ static bool remove_padding(private_esp_packet_t *this, chunk_t plaintext)
 	payload = this->payload->get_encoding(this->payload);
 
 	DBG3(DBG_ESP, "ESP payload:\n  payload %B\n  padding %B\n  "
-		 "padding length = %hhu, next header = %hhu", &payload, &padding,
+				  "padding length = %hhu, next header = %hhu",
+		 &payload, &padding,
 		 pad_length, this->next_header);
 	return TRUE;
 
@@ -431,11 +446,11 @@ failed:
 }
 
 METHOD(esp_packet_t, decrypt, status_t,
-	private_esp_packet_t *this, esp_context_t *esp_context)
+	   private_esp_packet_t *this, esp_context_t *esp_context)
 {
 	bio_reader_t *reader;
 	uint32_t spi, seq;
-	chunk_t data, iv, icv, aad, ciphertext, plaintext,qk;
+	chunk_t data, iv, icv, aad, ciphertext, plaintext, qk;
 	aead_t *aead;
 
 	DESTROY_IF(this->payload);
@@ -443,7 +458,7 @@ METHOD(esp_packet_t, decrypt, status_t,
 
 	data = this->packet->get_data(this->packet);
 	aead = esp_context->get_aead(esp_context);
-	
+
 	reader = bio_reader_create(data);
 	if (!reader->read_uint32(reader, &spi) ||
 		!reader->read_uint32(reader, &seq) ||
@@ -456,27 +471,51 @@ METHOD(esp_packet_t, decrypt, status_t,
 	}
 	ciphertext = reader->peek(reader);
 	reader->destroy(reader);
-	size_t keysize=aead->get_key_size(aead);
+	size_t keysize = aead->get_key_size(aead);
 	qk = chunk_alloc(keysize);
-	if (!getqsk(spi, seq, TRUE, &qk, keysize)) {
-		DBG1(DBG_ESP, "get qsk failed!");
+	if (keysize > 128)
+	{
+		// 如果密钥长度大于128，显然是用的otp加密
+		if (!getqotpk(spi, seq, TRUE, &qk, keysize))
+		{
+			DBG0(DBG_ESP, "get qsk failed!");
 			return FAILED;
-	}
-	else {
-		if (!aead->set_key(aead, qk)) {
-			DBG1(DBG_ESP, "set quantum key failed!");
+		}
+		else
+		{
+			if (!aead->set_key(aead, qk))
+			{
+				DBG0(DBG_ESP, "set quantum key failed!");
 				return FAILED;
+			}
+		}
+	}
+	else
+	{
+		if (!getqsk(spi, seq, TRUE, &qk, keysize))
+		{
+			DBG0(DBG_ESP, "get qsk failed!");
+			return FAILED;
+		}
+		else
+		{
+			if (!aead->set_key(aead, qk))
+			{
+				DBG0(DBG_ESP, "set quantum key failed!");
+				return FAILED;
+			}
 		}
 	}
 	if (!esp_context->verify_seqno(esp_context, seq))
 	{
 		DBG1(DBG_ESP, "ESP sequence number verification failed:\n  "
-			 "src %H, dst %H, SPI %.8x [seq %u]",
+					  "src %H, dst %H, SPI %.8x [seq %u]",
 			 get_source(this), get_destination(this), spi, seq);
 		return VERIFY_ERROR;
 	}
 	DBG3(DBG_ESP, "ESP decryption:\n  SPI %.8x [seq %u]\n  IV %B\n  "
-		 "encrypted %B\n  ICV %B", spi, seq, &iv, &ciphertext, &icv);
+				  "encrypted %B\n  ICV %B",
+		 spi, seq, &iv, &ciphertext, &icv);
 
 	/* include ICV in ciphertext for decryption/verification */
 	ciphertext.len += icv.len;
@@ -512,9 +551,9 @@ static void generate_padding(chunk_t padding)
 }
 
 METHOD(esp_packet_t, encrypt, status_t,
-	private_esp_packet_t *this, esp_context_t *esp_context, uint32_t spi)
+	   private_esp_packet_t *this, esp_context_t *esp_context, uint32_t spi)
 {
-	chunk_t iv, icv, aad, padding, payload, ciphertext,qk;
+	chunk_t iv, icv, aad, padding, payload, ciphertext, qk;
 	bio_writer_t *writer;
 	uint32_t next_seqno;
 	size_t blocksize, plainlen;
@@ -530,16 +569,39 @@ METHOD(esp_packet_t, encrypt, status_t,
 	}
 
 	aead = esp_context->get_aead(esp_context);
-	size_t keysize=aead->get_key_size(aead);
+	size_t keysize = aead->get_key_size(aead);
 	qk = chunk_alloc(keysize);
-	if (!getqsk(spi,next_seqno,FALSE,&qk, keysize)) {
-		DBG1(DBG_ESP, "get qsk failed!");
-		return FAILED;
-	}
-	else {
-		if (!aead->set_key(aead,qk)) {
-			DBG1(DBG_ESP, "set quantum key failed!");
+	if (keysize > 128)
+	{
+		// 如果密钥长度大于128字节，显然是用的otp加密
+		if (!getqotpk(spi, next_seqno, FALSE, &qk, keysize))
+		{
+			DBG0(DBG_ESP, "get qsk failed!");
 			return FAILED;
+		}
+		else
+		{
+			if (!aead->set_key(aead, qk))
+			{
+				DBG0(DBG_ESP, "set quantum key failed!");
+				return FAILED;
+			}
+		}
+	}
+	else
+	{
+		if (!getqsk(spi, next_seqno, FALSE, &qk, keysize))
+		{
+			DBG0(DBG_ESP, "get qsk failed!");
+			return FAILED;
+		}
+		else
+		{
+			if (!aead->set_key(aead, qk))
+			{
+				DBG0(DBG_ESP, "set quantum key failed!");
+				return FAILED;
+			}
 		}
 	}
 	iv_gen = aead->get_iv_gen(aead);
@@ -595,7 +657,8 @@ METHOD(esp_packet_t, encrypt, status_t,
 	icv = writer->skip(writer, icv.len);
 
 	DBG3(DBG_ESP, "ESP before encryption:\n  payload = %B\n  padding = %B\n  "
-		 "padding length = %hhu, next header = %hhu", &payload, &padding,
+				  "padding length = %hhu, next header = %hhu",
+		 &payload, &padding,
 		 (uint8_t)padding.len, this->next_header);
 
 	/* encrypt/authenticate the content inline */
@@ -607,7 +670,8 @@ METHOD(esp_packet_t, encrypt, status_t,
 	}
 
 	DBG3(DBG_ESP, "ESP packet:\n  SPI %.8x [seq %u]\n  IV %B\n  "
-		 "encrypted %B\n  ICV %B", ntohl(spi), next_seqno, &iv,
+				  "encrypted %B\n  ICV %B",
+		 ntohl(spi), next_seqno, &iv,
 		 &ciphertext, &icv);
 
 	this->packet->set_data(this->packet, writer->extract_buf(writer));
@@ -617,19 +681,19 @@ METHOD(esp_packet_t, encrypt, status_t,
 }
 
 METHOD(esp_packet_t, get_next_header, uint8_t,
-	private_esp_packet_t *this)
+	   private_esp_packet_t *this)
 {
 	return this->next_header;
 }
 
-METHOD(esp_packet_t, get_payload, ip_packet_t*,
-	private_esp_packet_t *this)
+METHOD(esp_packet_t, get_payload, ip_packet_t *,
+	   private_esp_packet_t *this)
 {
 	return this->payload;
 }
 
-METHOD(esp_packet_t, extract_payload, ip_packet_t*,
-	private_esp_packet_t *this)
+METHOD(esp_packet_t, extract_payload, ip_packet_t *,
+	   private_esp_packet_t *this)
 {
 	ip_packet_t *payload;
 
@@ -639,7 +703,7 @@ METHOD(esp_packet_t, extract_payload, ip_packet_t*,
 }
 
 METHOD2(esp_packet_t, packet_t, destroy, void,
-	private_esp_packet_t *this)
+		private_esp_packet_t *this)
 {
 	DESTROY_IF(this->payload);
 	this->packet->destroy(this->packet);
@@ -651,35 +715,33 @@ static private_esp_packet_t *esp_packet_create_internal(packet_t *packet)
 	private_esp_packet_t *this;
 
 	INIT(this,
-		.public = {
-			.packet = {
-				.set_source = _set_source,
-				.get_source = _get_source,
-				.set_destination = _set_destination,
-				.get_destination = _get_destination,
-				.get_data = _get_data,
-				.set_data = _set_data,
-				.get_dscp = _get_dscp,
-				.set_dscp = _set_dscp,
-				.get_metadata = _get_metadata,
-				.set_metadata = _set_metadata,
-				.skip_bytes = _skip_bytes,
-				.clone = _clone_,
-				.destroy = _destroy,
-			},
-			.get_source = _get_source,
-			.get_destination = _get_destination,
-			.get_next_header = _get_next_header,
-			.parse_header = _parse_header,
-			.decrypt = _decrypt,
-			.encrypt = _encrypt,
-			.get_payload = _get_payload,
-			.extract_payload = _extract_payload,
-			.destroy = _destroy,
-		},
-		.packet = packet,
-		.next_header = IPPROTO_NONE,
-	);
+		 .public = {
+			 .packet = {
+				 .set_source = _set_source,
+				 .get_source = _get_source,
+				 .set_destination = _set_destination,
+				 .get_destination = _get_destination,
+				 .get_data = _get_data,
+				 .set_data = _set_data,
+				 .get_dscp = _get_dscp,
+				 .set_dscp = _set_dscp,
+				 .get_metadata = _get_metadata,
+				 .set_metadata = _set_metadata,
+				 .skip_bytes = _skip_bytes,
+				 .clone = _clone_,
+				 .destroy = _destroy,
+			 },
+			 .get_source = _get_source,
+			 .get_destination = _get_destination,
+			 .get_next_header = _get_next_header,
+			 .parse_header = _parse_header,
+			 .decrypt = _decrypt,
+			 .encrypt = _encrypt,
+			 .get_payload = _get_payload,
+			 .extract_payload = _extract_payload,
+			 .destroy = _destroy,
+		 },
+		 .packet = packet, .next_header = IPPROTO_NONE, );
 	return this;
 }
 
