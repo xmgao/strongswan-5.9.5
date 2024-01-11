@@ -26,8 +26,7 @@
 #include <sys/un.h>
 #include <string.h>
 
-
-#define socket_path "/tmp/my_socket"	//定义本地套接字路径
+#define socket_path "/tmp/my_socket" // 定义本地套接字路径
 #define BUFFLEN 128
 
 typedef struct private_psk_authenticator_t private_psk_authenticator_t;
@@ -35,7 +34,8 @@ typedef struct private_psk_authenticator_t private_psk_authenticator_t;
 /**
  * Private data of an psk_authenticator_t object.
  */
-struct private_psk_authenticator_t {
+struct private_psk_authenticator_t
+{
 
 	/**
 	 * Public authenticator_t interface.
@@ -73,62 +73,67 @@ struct private_psk_authenticator_t {
 	bool no_ppk_auth;
 };
 
+void replaceSecret(const char *filename, const char *newSecret)
+{
+	FILE *file = fopen(filename, "r");
+	if (file == NULL)
+	{
+		printf("Error opening file.\n");
+		return;
+	}
 
+	FILE *tempFile = fopen("temp.conf", "w");
+	if (tempFile == NULL)
+	{
+		fclose(file);
+		printf("Error creating temporary file.\n");
+		return;
+	}
 
-void replaceSecret(const char *filename, const char *newSecret) {
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        printf("Error opening file.\n");
-        return;
-    }
+	char line[1000];
+	const char *searchStr = "secret =";
+	size_t searchStrLen = strlen(searchStr);
 
-    FILE *tempFile = fopen("temp.conf", "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        printf("Error creating temporary file.\n");
-        return;
-    }
+	while (fgets(line, sizeof(line), file))
+	{
+		char *pos = strstr(line, searchStr);
+		if (pos != NULL)
+		{
+			fprintf(tempFile, "%.*s%s\n", (int)(pos - line) + searchStrLen, line, newSecret);
+		}
+		else
+		{
+			fprintf(tempFile, "%s", line);
+		}
+	}
 
-    char line[1000];
-    const char *searchStr = "secret =";
-    size_t searchStrLen = strlen(searchStr);
+	fclose(file);
+	fclose(tempFile);
 
-    while (fgets(line, sizeof(line), file)) {
-        char *pos = strstr(line, searchStr);
-        if (pos != NULL) {
-            fprintf(tempFile, "%.*s%s\n", (int)(pos - line) + searchStrLen, line, newSecret);
-        } else {
-            fprintf(tempFile, "%s", line);
-        }
-    }
-
-    fclose(file);
-    fclose(tempFile);
-
-    // Rename the temporary file to the original filename
-    remove(filename);
-    rename("temp.conf", filename);
+	// Rename the temporary file to the original filename
+	remove(filename);
+	rename("temp.conf", filename);
 }
 
-
-
-void convertToHexString(const char *rbuf, char *newSecret, size_t newSize) {
-    int i, index = 2;
-    for (i = 0; i < newSize && rbuf[i] != '\0'; i++) {
-        index += snprintf(newSecret + index, newSize - index, "%02x", (unsigned char)rbuf[i]);
-    }
-    
+void convertToHexString(const char *rbuf, char *newSecret, size_t newSize)
+{
+	int i, index = 2;
+	for (i = 0; i < newSize && rbuf[i] != '\0'; i++)
+	{
+		index += snprintf(newSecret + index, newSize - index, "%02x", (unsigned char)rbuf[i]);
+	}
 }
 
-//更新预共享密钥
-//TODO
-static bool updatepsk(chunk_t key) {
-	int  ret;
+// 更新预共享密钥
+static bool updatepsk(chunk_t key)
+{
+	int ret;
 	char buf[BUFFLEN], rbuf[BUFFLEN];
 	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (sockfd < 0) {
+	if (sockfd < 0)
+	{
 		perror("socket creation failed");
-		exit(EXIT_FAILURE);
+		return false;
 	}
 
 	struct sockaddr_un server_addr;
@@ -136,32 +141,38 @@ static bool updatepsk(chunk_t key) {
 	server_addr.sun_family = AF_UNIX;
 	strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
 
-	int connect_status = connect(sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_un));
-	if (connect_status < 0) {
+	int connect_status = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un));
+	if (connect_status < 0)
+	{
 		perror("updatepsk connect failed");
-		exit(EXIT_FAILURE);
+		return false;
 	}
 	sprintf(buf, "getsharedkey %d\n", (int)key.len);
 	ret = send(sockfd, buf, strlen(buf), 0);
-	if (ret < 0) {
+	if (ret < 0)
+	{
 		perror("updatepsk send error!\n");
 		return false;
 	}
 	ret = read(sockfd, rbuf, sizeof(rbuf));
+	if (ret <= 1)
+	{
+		DBG0(DBG_IKE, "quantum key unavailable");
+		close(sockfd);
+		return false;
+	}
 	rbuf[ret] = '\0';
 	close(sockfd);
-	DBG0(DBG_IKE, "quantum key for update psk:%s", rbuf);// 预共享密钥
 	char newSecret[128] = "0x"; // Initialize with "0x" prefix
-    convertToHexString(rbuf, newSecret, sizeof(newSecret));
-    const char *configFile = "/etc/swanctl/conf.d/my.conf";
-
-    replaceSecret(configFile, newSecret);
-
-
+	convertToHexString(rbuf, newSecret, sizeof(newSecret));
+	DBG0(DBG_IKE, "quantum key for update psk:%s", newSecret); // 预共享密钥
+	// TODO:找到正确的配置文件
+	const char *configFile = "/etc/swanctl/conf.d/my.conf";
+	replaceSecret(configFile, newSecret);
 	return true;
 }
 METHOD(authenticator_t, build, status_t,
-	private_psk_authenticator_t *this, message_t *message)
+	   private_psk_authenticator_t *this, message_t *message)
 {
 	identification_t *my_id, *other_id;
 	auth_payload_t *auth_payload;
@@ -169,7 +180,7 @@ METHOD(authenticator_t, build, status_t,
 	chunk_t auth_data;
 	keymat_v2_t *keymat;
 
-	keymat = (keymat_v2_t*)this->ike_sa->get_keymat(this->ike_sa);
+	keymat = (keymat_v2_t *)this->ike_sa->get_keymat(this->ike_sa);
 	my_id = this->ike_sa->get_my_id(this->ike_sa);
 	other_id = this->ike_sa->get_other_id(this->ike_sa);
 	DBG1(DBG_IKE, "authentication of '%Y' (myself) with %N",
@@ -193,13 +204,13 @@ METHOD(authenticator_t, build, status_t,
 	auth_payload->set_auth_method(auth_payload, AUTH_PSK);
 	auth_payload->set_data(auth_payload, auth_data);
 	chunk_free(&auth_data);
-	message->add_payload(message, (payload_t*)auth_payload);
+	message->add_payload(message, (payload_t *)auth_payload);
 
 	if (this->no_ppk_auth)
 	{
 		if (!keymat->get_psk_sig(keymat, FALSE, this->ike_sa_init, this->nonce,
-							 key->get_key(key), chunk_empty, my_id,
-							 this->reserved, &auth_data))
+								 key->get_key(key), chunk_empty, my_id,
+								 this->reserved, &auth_data))
 		{
 			DBG1(DBG_IKE, "failed adding NO_PPK_AUTH notify");
 			key->destroy(key);
@@ -209,15 +220,16 @@ METHOD(authenticator_t, build, status_t,
 		message->add_notify(message, FALSE, NO_PPK_AUTH, auth_data);
 		chunk_free(&auth_data);
 	}
-	if (!updatepsk(key->get_key(key))) {
-		perror("update psk failed!\n");
+	if (!updatepsk(key->get_key(key)))
+	{
+		DBG0(DBG_IKE, "update psk failed!");
 	}
 	key->destroy(key);
 	return SUCCESS;
 }
 
 METHOD(authenticator_t, process, status_t,
-	private_psk_authenticator_t *this, message_t *message)
+	   private_psk_authenticator_t *this, message_t *message)
 {
 	chunk_t auth_data, recv_auth_data;
 	identification_t *my_id, *other_id;
@@ -230,7 +242,7 @@ METHOD(authenticator_t, process, status_t,
 	int keys_found = 0;
 	keymat_v2_t *keymat;
 
-	auth_payload = (auth_payload_t*)message->get_payload(message, PLV2_AUTH);
+	auth_payload = (auth_payload_t *)message->get_payload(message, PLV2_AUTH);
 	if (!auth_payload)
 	{
 		return FAILED;
@@ -239,7 +251,7 @@ METHOD(authenticator_t, process, status_t,
 
 	if (this->ike_sa->supports_extension(this->ike_sa, EXT_PPK) &&
 		!this->ppk.ptr)
-	{	/* look for a NO_PPK_AUTH notify if we have no PPK */
+	{ /* look for a NO_PPK_AUTH notify if we have no PPK */
 		notify = message->get_notify(message, NO_PPK_AUTH);
 		if (notify)
 		{
@@ -248,11 +260,11 @@ METHOD(authenticator_t, process, status_t,
 		}
 	}
 
-	keymat = (keymat_v2_t*)this->ike_sa->get_keymat(this->ike_sa);
+	keymat = (keymat_v2_t *)this->ike_sa->get_keymat(this->ike_sa);
 	my_id = this->ike_sa->get_my_id(this->ike_sa);
 	other_id = this->ike_sa->get_other_id(this->ike_sa);
 	enumerator = lib->credmgr->create_shared_enumerator(lib->credmgr,
-												SHARED_IKE, my_id, other_id);
+														SHARED_IKE, my_id, other_id);
 	while (!authenticated && enumerator->enumerate(enumerator, &key, NULL, NULL))
 	{
 		keys_found++;
@@ -291,14 +303,14 @@ METHOD(authenticator_t, process, status_t,
 }
 
 METHOD(authenticator_t, use_ppk, void,
-	private_psk_authenticator_t *this, chunk_t ppk, bool no_ppk_auth)
+	   private_psk_authenticator_t *this, chunk_t ppk, bool no_ppk_auth)
 {
 	this->ppk = ppk;
 	this->no_ppk_auth = no_ppk_auth;
 }
 
 METHOD(authenticator_t, destroy, void,
-	private_psk_authenticator_t *this)
+	   private_psk_authenticator_t *this)
 {
 	free(this);
 }
@@ -307,25 +319,22 @@ METHOD(authenticator_t, destroy, void,
  * Described in header.
  */
 psk_authenticator_t *psk_authenticator_create_builder(ike_sa_t *ike_sa,
-									chunk_t received_nonce, chunk_t sent_init,
-									char reserved[3])
+													  chunk_t received_nonce, chunk_t sent_init,
+													  char reserved[3])
 {
 	private_psk_authenticator_t *this;
 
 	INIT(this,
-		.public = {
-			.authenticator = {
-				.build = _build,
-				.process = (void*)return_failed,
-				.use_ppk = _use_ppk,
-				.is_mutual = (void*)return_false,
-				.destroy = _destroy,
-			},
-		},
-		.ike_sa = ike_sa,
-		.ike_sa_init = sent_init,
-		.nonce = received_nonce,
-	);
+		 .public = {
+			 .authenticator = {
+				 .build = _build,
+				 .process = (void *)return_failed,
+				 .use_ppk = _use_ppk,
+				 .is_mutual = (void *)return_false,
+				 .destroy = _destroy,
+			 },
+		 },
+		 .ike_sa = ike_sa, .ike_sa_init = sent_init, .nonce = received_nonce, );
 	memcpy(this->reserved, reserved, sizeof(this->reserved));
 
 	return &this->public;
@@ -335,25 +344,22 @@ psk_authenticator_t *psk_authenticator_create_builder(ike_sa_t *ike_sa,
  * Described in header.
  */
 psk_authenticator_t *psk_authenticator_create_verifier(ike_sa_t *ike_sa,
-									chunk_t sent_nonce, chunk_t received_init,
-									char reserved[3])
+													   chunk_t sent_nonce, chunk_t received_init,
+													   char reserved[3])
 {
 	private_psk_authenticator_t *this;
 
 	INIT(this,
-		.public = {
-			.authenticator = {
-				.build = (void*)return_failed,
-				.process = _process,
-				.use_ppk = _use_ppk,
-				.is_mutual = (void*)return_false,
-				.destroy = _destroy,
-			},
-		},
-		.ike_sa = ike_sa,
-		.ike_sa_init = received_init,
-		.nonce = sent_nonce,
-	);
+		 .public = {
+			 .authenticator = {
+				 .build = (void *)return_failed,
+				 .process = _process,
+				 .use_ppk = _use_ppk,
+				 .is_mutual = (void *)return_false,
+				 .destroy = _destroy,
+			 },
+		 },
+		 .ike_sa = ike_sa, .ike_sa_init = received_init, .nonce = sent_nonce, );
 	memcpy(this->reserved, reserved, sizeof(this->reserved));
 
 	return &this->public;

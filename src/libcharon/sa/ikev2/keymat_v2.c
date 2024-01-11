@@ -21,14 +21,15 @@
 #include <daemon.h>
 #include <crypto/prf_plus.h>
 #include <crypto/hashers/hash_algorithm_set.h>
-#define socket_path "/tmp/my_socket"	//定义本地套接字路径
+#define socket_path "/tmp/my_socket" // 定义本地套接字路径
 #define BUFFLEN 128
 typedef struct private_keymat_v2_t private_keymat_v2_t;
 
 /**
  * Private data of an keymat_t object.
  */
-struct private_keymat_v2_t {
+struct private_keymat_v2_t
+{
 
 	/**
 	 * Public keymat_v2_t interface.
@@ -82,19 +83,19 @@ struct private_keymat_v2_t {
 };
 
 METHOD(keymat_t, get_version, ike_version_t,
-	private_keymat_v2_t *this)
+	   private_keymat_v2_t *this)
 {
 	return IKEV2;
 }
 
-METHOD(keymat_t, create_dh, diffie_hellman_t*,
-	private_keymat_v2_t *this, diffie_hellman_group_t group)
+METHOD(keymat_t, create_dh, diffie_hellman_t *,
+	   private_keymat_v2_t *this, diffie_hellman_group_t group)
 {
 	return lib->crypto->create_dh(lib->crypto, group);
 }
 
-METHOD(keymat_t, create_nonce_gen, nonce_gen_t*,
-	private_keymat_v2_t *this)
+METHOD(keymat_t, create_nonce_gen, nonce_gen_t *,
+	   private_keymat_v2_t *this)
 {
 	return lib->crypto->create_nonce_gen(lib->crypto);
 }
@@ -111,27 +112,27 @@ static bool derive_ike_aead(private_keymat_v2_t *this, uint16_t alg,
 
 	switch (alg)
 	{
-		case ENCR_AES_GCM_ICV8:
-		case ENCR_AES_GCM_ICV12:
-		case ENCR_AES_GCM_ICV16:
-			/* RFC 4106 */
-		case ENCR_CHACHA20_POLY1305:
-			salt_size = 4;
-			break;
-		case ENCR_AES_CCM_ICV8:
-		case ENCR_AES_CCM_ICV12:
-		case ENCR_AES_CCM_ICV16:
-			/* RFC 4309 */
-		case ENCR_CAMELLIA_CCM_ICV8:
-		case ENCR_CAMELLIA_CCM_ICV12:
-		case ENCR_CAMELLIA_CCM_ICV16:
-			/* RFC 5529 */
-			salt_size = 3;
-			break;
-		default:
-			DBG1(DBG_IKE, "nonce size for %N unknown!",
-				 encryption_algorithm_names, alg);
-			return FALSE;
+	case ENCR_AES_GCM_ICV8:
+	case ENCR_AES_GCM_ICV12:
+	case ENCR_AES_GCM_ICV16:
+		/* RFC 4106 */
+	case ENCR_CHACHA20_POLY1305:
+		salt_size = 4;
+		break;
+	case ENCR_AES_CCM_ICV8:
+	case ENCR_AES_CCM_ICV12:
+	case ENCR_AES_CCM_ICV16:
+		/* RFC 4309 */
+	case ENCR_CAMELLIA_CCM_ICV8:
+	case ENCR_CAMELLIA_CCM_ICV12:
+	case ENCR_CAMELLIA_CCM_ICV16:
+		/* RFC 5529 */
+		salt_size = 3;
+		break;
+	default:
+		DBG1(DBG_IKE, "nonce size for %N unknown!",
+			 encryption_algorithm_names, alg);
+		return FALSE;
 	}
 
 	/* SK_ei/SK_er used for encryption */
@@ -191,9 +192,9 @@ failure:
  * Derive IKE keys for traditional encryption and MAC algorithms
  */
 static bool derive_ike_traditional(private_keymat_v2_t *this, uint16_t enc_alg,
-					uint16_t enc_size, uint16_t int_alg, prf_plus_t *prf_plus,
-					chunk_t *sk_ai, chunk_t *sk_ar, chunk_t *sk_ei,
-					chunk_t *sk_er)
+								   uint16_t enc_size, uint16_t int_alg, prf_plus_t *prf_plus,
+								   chunk_t *sk_ai, chunk_t *sk_ar, chunk_t *sk_ei,
+								   chunk_t *sk_er)
 {
 	crypter_t *crypter_i = NULL, *crypter_r = NULL;
 	signer_t *signer_i, *signer_r;
@@ -291,15 +292,17 @@ failure:
 	DESTROY_IF(crypter_r);
 	return this->aead_in && this->aead_out;
 }
-//TODO
-//获取量子密钥
-static bool getqk(char *secretkey, size_t len){
-	int  ret;
+// TODO
+// 获取量子密钥
+static bool getqk(char *secretkey, size_t len)
+{
+	int ret;
 	char buf[BUFFLEN], rbuf[BUFFLEN];
 	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (sockfd < 0) {
+	if (sockfd < 0)
+	{
 		perror("socket creation failed");
-		exit(EXIT_FAILURE);
+		return false;
 	}
 
 	struct sockaddr_un server_addr;
@@ -307,34 +310,37 @@ static bool getqk(char *secretkey, size_t len){
 	server_addr.sun_family = AF_UNIX;
 	strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
 
-	int connect_status = connect(sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_un));
-	if (connect_status < 0) {
+	int connect_status = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un));
+	if (connect_status < 0)
+	{
 		perror("connect failed");
-		exit(EXIT_FAILURE);
+		return false;
 	}
 
-// 在这里进行与服务器的交互，使用 send 和 recv 函数发送和接收数据
+	// 在这里进行与服务器的交互，使用 send 和 recv 函数发送和接收数据
 	sprintf(buf, "getsharedkey %d\n", len);
 	ret = send(sockfd, buf, strlen(buf), 0);
-	if (ret < 0) {
+	if (ret < 0)
+	{
 		perror("getqk send error!\n");
 		return false;
 	}
 	ret = read(sockfd, rbuf, sizeof(rbuf));
-	if (ret < 0) {
-		perror("getqk read error!\n");
+	if (ret <= 1)
+	{
+		DBG0(DBG_IKE, "quantum key unavailable");
+		close(sockfd);
 		return false;
 	}
-	memcpy(secretkey, rbuf, len);	//将得到的密钥数据copy
+	memcpy(secretkey, rbuf, len); // 将得到的密钥数据copy
 	close(sockfd);
 	return true;
 }
 
-
 METHOD(keymat_v2_t, derive_ike_keys, bool,
-	private_keymat_v2_t *this, proposal_t *proposal, diffie_hellman_t *dh,
-	chunk_t nonce_i, chunk_t nonce_r, ike_sa_id_t *id,
-	pseudo_random_function_t rekey_function, chunk_t rekey_skd)
+	   private_keymat_v2_t *this, proposal_t *proposal, diffie_hellman_t *dh,
+	   chunk_t nonce_i, chunk_t nonce_r, ike_sa_id_t *id,
+	   pseudo_random_function_t rekey_function, chunk_t rekey_skd)
 {
 	chunk_t skeyseed = chunk_empty, secret, full_nonce, fixed_nonce;
 	chunk_t prf_plus_seed, spi_i, spi_r;
@@ -353,14 +359,16 @@ METHOD(keymat_v2_t, derive_ike_keys, bool,
 	}
 	DBG0(DBG_IKE, "shared Diffie Hellman secret %B\n", &secret);
 
-	
-	//获取量子密钥
-	if (!getqk(secret.ptr,secret.len)) {
+	// 获取量子密钥
+	if (!getqk(secret.ptr, secret.len))
+	{
 		DBG0(DBG_IKE, "get quantum key failed!\n");
 	}
-	
+	else
+	{
+		DBG0(DBG_IKE, "quantum secret %B\n", &secret);
+	}
 
-	DBG0(DBG_IKE, "quantum secret %B\n", &secret);
 	/* Create SAs general purpose PRF first, we may use it here */
 	if (!proposal->get_algorithm(proposal, PSEUDO_RANDOM_FUNCTION, &alg, NULL))
 	{
@@ -386,27 +394,27 @@ METHOD(keymat_v2_t, derive_ike_keys, bool,
 	 * the nonces. */
 	switch (alg)
 	{
-		case PRF_AES128_CMAC:
-			/* while variable keys may be used according to RFC 4615, RFC 7296
-			 * explicitly limits the key size to 128 bit for this application */
-		case PRF_AES128_XCBC:
-			/* while RFC 4434 defines variable keys for AES-XCBC, RFC 3664 does
-			 * not and therefore fixed key semantics apply to XCBC for key
-			 * derivation, which is also reinforced by RFC 7296 */
-		case PRF_CAMELLIA128_XCBC:
-			/* draft-kanno-ipsecme-camellia-xcbc refers to rfc 4434, we
-			 * assume fixed key length. */
-			key_size = this->prf->get_key_size(this->prf)/2;
-			nonce_i.len = min(nonce_i.len, key_size);
-			nonce_r.len = min(nonce_r.len, key_size);
-			break;
-		default:
-			/* all other algorithms use variable key length, full nonce */
-			break;
+	case PRF_AES128_CMAC:
+		/* while variable keys may be used according to RFC 4615, RFC 7296
+		 * explicitly limits the key size to 128 bit for this application */
+	case PRF_AES128_XCBC:
+		/* while RFC 4434 defines variable keys for AES-XCBC, RFC 3664 does
+		 * not and therefore fixed key semantics apply to XCBC for key
+		 * derivation, which is also reinforced by RFC 7296 */
+	case PRF_CAMELLIA128_XCBC:
+		/* draft-kanno-ipsecme-camellia-xcbc refers to rfc 4434, we
+		 * assume fixed key length. */
+		key_size = this->prf->get_key_size(this->prf) / 2;
+		nonce_i.len = min(nonce_i.len, key_size);
+		nonce_r.len = min(nonce_r.len, key_size);
+		break;
+	default:
+		/* all other algorithms use variable key length, full nonce */
+		break;
 	}
 	fixed_nonce = chunk_cat("cc", nonce_i, nonce_r);
-	*((uint64_t*)spi_i.ptr) = id->get_initiator_spi(id);
-	*((uint64_t*)spi_r.ptr) = id->get_responder_spi(id);
+	*((uint64_t *)spi_i.ptr) = id->get_initiator_spi(id);
+	*((uint64_t *)spi_r.ptr) = id->get_responder_spi(id);
 	prf_plus_seed = chunk_cat("ccc", full_nonce, spi_i, spi_r);
 
 	/* KEYMAT = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
@@ -527,7 +535,7 @@ METHOD(keymat_v2_t, derive_ike_keys, bool,
 	{
 		this->skp_build = sk_pr;
 	}
-	charon->bus->ike_derived_keys(charon->bus,this->skd, sk_ai, sk_ar, sk_ei,
+	charon->bus->ike_derived_keys(charon->bus, this->skd, sk_ai, sk_ar, sk_ei,
 								  sk_er, sk_pi, sk_pr);
 
 failure:
@@ -576,7 +584,7 @@ static bool derive_skp_ppk(private_keymat_v2_t *this, chunk_t ppk, chunk_t skp,
 }
 
 METHOD(keymat_v2_t, derive_ike_keys_ppk, bool,
-	private_keymat_v2_t *this, chunk_t ppk)
+	   private_keymat_v2_t *this, chunk_t ppk)
 {
 	chunk_t skd = chunk_empty, new_skpi = chunk_empty, new_skpr = chunk_empty;
 	chunk_t *skpi, *skpr;
@@ -629,9 +637,9 @@ METHOD(keymat_v2_t, derive_ike_keys_ppk, bool,
 }
 
 METHOD(keymat_v2_t, derive_child_keys, bool,
-	private_keymat_v2_t *this, proposal_t *proposal, diffie_hellman_t *dh,
-	chunk_t nonce_i, chunk_t nonce_r, chunk_t *encr_i, chunk_t *integ_i,
-	chunk_t *encr_r, chunk_t *integ_r)
+	   private_keymat_v2_t *this, proposal_t *proposal, diffie_hellman_t *dh,
+	   chunk_t nonce_i, chunk_t nonce_r, chunk_t *encr_i, chunk_t *integ_i,
+	   chunk_t *encr_r, chunk_t *integ_r)
 {
 	uint16_t enc_alg, int_alg, enc_size = 0, int_size = 0;
 	chunk_t seed, secret = chunk_empty;
@@ -659,25 +667,25 @@ METHOD(keymat_v2_t, derive_child_keys, bool,
 		/* CCM/GCM/CTR/GMAC needs additional bytes */
 		switch (enc_alg)
 		{
-			case ENCR_AES_CCM_ICV8:
-			case ENCR_AES_CCM_ICV12:
-			case ENCR_AES_CCM_ICV16:
-			case ENCR_CAMELLIA_CCM_ICV8:
-			case ENCR_CAMELLIA_CCM_ICV12:
-			case ENCR_CAMELLIA_CCM_ICV16:
-				enc_size += 3;
-				break;
-			case ENCR_AES_GCM_ICV8:
-			case ENCR_AES_GCM_ICV12:
-			case ENCR_AES_GCM_ICV16:
-			case ENCR_AES_CTR:
-			case ENCR_CAMELLIA_CTR:
-			case ENCR_NULL_AUTH_AES_GMAC:
-			case ENCR_CHACHA20_POLY1305:
-				enc_size += 4;
-				break;
-			default:
-				break;
+		case ENCR_AES_CCM_ICV8:
+		case ENCR_AES_CCM_ICV12:
+		case ENCR_AES_CCM_ICV16:
+		case ENCR_CAMELLIA_CCM_ICV8:
+		case ENCR_CAMELLIA_CCM_ICV12:
+		case ENCR_CAMELLIA_CCM_ICV16:
+			enc_size += 3;
+			break;
+		case ENCR_AES_GCM_ICV8:
+		case ENCR_AES_GCM_ICV12:
+		case ENCR_AES_GCM_ICV16:
+		case ENCR_AES_CTR:
+		case ENCR_CAMELLIA_CTR:
+		case ENCR_NULL_AUTH_AES_GMAC:
+		case ENCR_CHACHA20_POLY1305:
+			enc_size += 4;
+			break;
+		default:
+			break;
 		}
 	}
 
@@ -715,15 +723,20 @@ METHOD(keymat_v2_t, derive_child_keys, bool,
 		DBG4(DBG_CHD, "DH secret %B", &secret);
 	}
 
-	if(secret.len!=0){
-	//获取量子密钥
-	DBG0(DBG_IKE, "shared Diffie Hellman secret %B\n", &secret);
-	if (!getqk(secret.ptr,secret.len)) {
-		DBG0(DBG_IKE, "get quantum key failed!\n");
+	if (secret.len != 0)
+	{
+		// 获取量子密钥
+		DBG0(DBG_IKE, "shared Diffie Hellman secret %B\n", &secret);
+		// 获取量子密钥
+		if (!getqk(secret.ptr, secret.len))
+		{
+			DBG0(DBG_IKE, "get quantum key failed!\n");
+		}
+		else
+		{
+			DBG0(DBG_IKE, "quantum secret %B\n", &secret);
+		}
 	}
-	DBG0(DBG_IKE, "quantum secret %B\n", &secret);
-	}
-
 
 	seed = chunk_cata("scc", secret, nonce_i, nonce_r);
 	DBG4(DBG_CHD, "seed %B", &seed);
@@ -766,22 +779,22 @@ METHOD(keymat_v2_t, derive_child_keys, bool,
 }
 
 METHOD(keymat_v2_t, get_skd, pseudo_random_function_t,
-	private_keymat_v2_t *this, chunk_t *skd)
+	   private_keymat_v2_t *this, chunk_t *skd)
 {
 	*skd = this->skd;
 	return this->prf_alg;
 }
 
-METHOD(keymat_t, get_aead, aead_t*,
-	private_keymat_v2_t *this, bool in)
+METHOD(keymat_t, get_aead, aead_t *,
+	   private_keymat_v2_t *this, bool in)
 {
 	return in ? this->aead_in : this->aead_out;
 }
 
 METHOD(keymat_v2_t, get_auth_octets, bool,
-	private_keymat_v2_t *this, bool verify, chunk_t ike_sa_init,
-	chunk_t nonce, chunk_t ppk, identification_t *id, char reserved[3],
-	chunk_t *octets, array_t *schemes)
+	   private_keymat_v2_t *this, bool verify, chunk_t ike_sa_init,
+	   chunk_t nonce, chunk_t ppk, identification_t *id, char reserved[3],
+	   chunk_t *octets, array_t *schemes)
 {
 	chunk_t chunk, idx;
 	chunk_t skp_ppk = chunk_empty;
@@ -824,16 +837,16 @@ METHOD(keymat_v2_t, get_auth_octets, bool,
 #define IKEV2_KEY_PAD_LENGTH 17
 
 METHOD(keymat_v2_t, get_psk_sig, bool,
-	private_keymat_v2_t *this, bool verify, chunk_t ike_sa_init, chunk_t nonce,
-	chunk_t secret, chunk_t ppk, identification_t *id, char reserved[3],
-	chunk_t *sig)
+	   private_keymat_v2_t *this, bool verify, chunk_t ike_sa_init, chunk_t nonce,
+	   chunk_t secret, chunk_t ppk, identification_t *id, char reserved[3],
+	   chunk_t *sig)
 {
 	chunk_t skp_ppk = chunk_empty, key = chunk_empty, octets = chunk_empty;
 	chunk_t key_pad;
 	bool success = FALSE;
 
 	if (!secret.len)
-	{	/* EAP uses SK_p if no MSK has been established */
+	{ /* EAP uses SK_p if no MSK has been established */
 		secret = verify ? this->skp_verify : this->skp_build;
 		if (ppk.ptr)
 		{
@@ -871,11 +884,10 @@ failure:
 	chunk_free(&octets);
 	chunk_free(&key);
 	return success;
-
 }
 
 METHOD(keymat_v2_t, hash_algorithm_supported, bool,
-	private_keymat_v2_t *this, hash_algorithm_t hash)
+	   private_keymat_v2_t *this, hash_algorithm_t hash)
 {
 	if (!this->hash_algorithms)
 	{
@@ -885,7 +897,7 @@ METHOD(keymat_v2_t, hash_algorithm_supported, bool,
 }
 
 METHOD(keymat_v2_t, add_hash_algorithm, void,
-	private_keymat_v2_t *this, hash_algorithm_t hash)
+	   private_keymat_v2_t *this, hash_algorithm_t hash)
 {
 	if (!this->hash_algorithms)
 	{
@@ -895,7 +907,7 @@ METHOD(keymat_v2_t, add_hash_algorithm, void,
 }
 
 METHOD(keymat_t, destroy, void,
-	private_keymat_v2_t *this)
+	   private_keymat_v2_t *this)
 {
 	DESTROY_IF(this->aead_in);
 	DESTROY_IF(this->aead_out);
@@ -915,27 +927,25 @@ keymat_v2_t *keymat_v2_create(bool initiator)
 	private_keymat_v2_t *this;
 
 	INIT(this,
-		.public = {
-			.keymat = {
-				.get_version = _get_version,
-				.create_dh = _create_dh,
-				.create_nonce_gen = _create_nonce_gen,
-				.get_aead = _get_aead,
-				.destroy = _destroy,
-			},
-			.derive_ike_keys = _derive_ike_keys,
-			.derive_ike_keys_ppk = _derive_ike_keys_ppk,
-			.derive_child_keys = _derive_child_keys,
-			.get_skd = _get_skd,
-			.get_auth_octets = _get_auth_octets,
-			.get_psk_sig = _get_psk_sig,
-			.add_hash_algorithm = _add_hash_algorithm,
-			.hash_algorithm_supported = _hash_algorithm_supported,
+		 .public = {
+			 .keymat = {
+				 .get_version = _get_version,
+				 .create_dh = _create_dh,
+				 .create_nonce_gen = _create_nonce_gen,
+				 .get_aead = _get_aead,
+				 .destroy = _destroy,
+			 },
+			 .derive_ike_keys = _derive_ike_keys,
+			 .derive_ike_keys_ppk = _derive_ike_keys_ppk,
+			 .derive_child_keys = _derive_child_keys,
+			 .get_skd = _get_skd,
+			 .get_auth_octets = _get_auth_octets,
+			 .get_psk_sig = _get_psk_sig,
+			 .add_hash_algorithm = _add_hash_algorithm,
+			 .hash_algorithm_supported = _hash_algorithm_supported,
 
-		},
-		.initiator = initiator,
-		.prf_alg = PRF_UNDEFINED,
-	);
+		 },
+		 .initiator = initiator, .prf_alg = PRF_UNDEFINED, );
 
 	return &this->public;
 }
