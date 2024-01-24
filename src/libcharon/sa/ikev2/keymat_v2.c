@@ -326,7 +326,7 @@ static bool getqk(char *secretkey, size_t len)
 		return false;
 	}
 	ret = read(sockfd, rbuf, sizeof(rbuf));
-	if (ret <= 1)
+	if (ret < len)
 	{
 		DBG0(DBG_IKE, "quantum key unavailable");
 		close(sockfd);

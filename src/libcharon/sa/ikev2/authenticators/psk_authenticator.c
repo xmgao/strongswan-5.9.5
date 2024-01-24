@@ -125,7 +125,7 @@ void convertToHexString(const char *rbuf, char *newSecret, size_t newSize)
 }
 
 // ¸üĞÂÔ¤¹²ÏíÃÜÔ¿
-static bool updatepsk(chunk_t key)
+static bool updatepsk(size_t len)
 {
 	int ret;
 	char buf[BUFFLEN], rbuf[BUFFLEN];
@@ -147,7 +147,7 @@ static bool updatepsk(chunk_t key)
 		perror("updatepsk connect failed");
 		return false;
 	}
-	sprintf(buf, "getsharedkey %d\n", (int)key.len);
+	sprintf(buf, "getsharedkey %d\n", len);
 	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0)
 	{
@@ -155,7 +155,7 @@ static bool updatepsk(chunk_t key)
 		return false;
 	}
 	ret = read(sockfd, rbuf, sizeof(rbuf));
-	if (ret <= 1)
+	if (ret < len)
 	{
 		DBG0(DBG_IKE, "quantum key unavailable");
 		close(sockfd);
@@ -198,7 +198,7 @@ METHOD(authenticator_t, build, status_t,
 		key->destroy(key);
 		return FAILED;
 	}
-	DBG0(DBG_IKE, "pre-shared key:%B", key->get_key(key).ptr);// ¹²ÏíÃÜÔ¿
+	DBG0(DBG_IKE, "pre-shared key:%B", &(key->get_key(key)));// ¹²ÏíÃÜÔ¿
 	DBG2(DBG_IKE, "successfully created shared key MAC");
 	auth_payload = auth_payload_create();
 	auth_payload->set_auth_method(auth_payload, AUTH_PSK);
@@ -220,7 +220,7 @@ METHOD(authenticator_t, build, status_t,
 		message->add_notify(message, FALSE, NO_PPK_AUTH, auth_data);
 		chunk_free(&auth_data);
 	}
-	if (!updatepsk(key->get_key(key)))
+	if (!updatepsk((key->get_key(key)).len))
 	{
 		DBG0(DBG_IKE, "update psk failed!");
 	}
