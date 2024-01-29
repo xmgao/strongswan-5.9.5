@@ -198,7 +198,9 @@ METHOD(authenticator_t, build, status_t,
 		key->destroy(key);
 		return FAILED;
 	}
-	DBG0(DBG_IKE, "pre-shared key:%B", &(key->get_key(key)));// ¹²ÏíÃÜÔ¿
+	chunk_t  key_value = key->get_key(key);
+	DBG0(DBG_IKE, "pre-shared key:%B", &key_value); // ¹²ÏíÃÜÔ¿
+
 	DBG2(DBG_IKE, "successfully created shared key MAC");
 	auth_payload = auth_payload_create();
 	auth_payload->set_auth_method(auth_payload, AUTH_PSK);
