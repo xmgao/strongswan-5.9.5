@@ -290,7 +290,7 @@ bool ipsec_sa_register(uint32_t spi,bool inbound){
 		perror("connect failed");
 		exit(EXIT_FAILURE);
 	}
-	sprintf(buf, "spiregister %u %d\n", spi,inbound);
+	sprintf(buf, "childsaregister %u %d\n", spi,inbound);
 	ret = send(sockfd, buf, strlen(buf), 0);
 	if (ret < 0) {
 		perror("SpiRegisterRequest send error!\n");

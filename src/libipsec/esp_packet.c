@@ -65,12 +65,113 @@ struct private_esp_packet_t
 
 #define MAX_DYNAMIC_SPI_COUNT 100 // 设定最大的套接字数量
 
+typedef struct Queue Queue;
+
+typedef struct keyparameter
+{
+	int range;
+	char qkey[64 + 1];
+} keyparameter;
+
+typedef struct KeyqueueNode
+{
+	keyparameter keypara;
+	struct KeyqueueNode *next;
+} KeyqueueNode;
+
+struct Queue
+{
+	KeyqueueNode *front;
+	KeyqueueNode *rear;
+	pthread_mutex_t lock; // 添加锁以保证线程安全
+	int count;
+};
+
+void init_queue(Queue *queue);
+
+void enqueue(Queue *queue, keyparameter data);
+
+keyparameter dequeue(Queue *queue);
+
+int is_empty(const Queue *queue);
+
+// 初始化队列
+void init_queue(Queue *queue)
+{
+	queue->front = NULL;
+	queue->rear = NULL;
+	pthread_mutex_init(&queue->lock, NULL); // 初始化锁
+	queue->count = 0;
+}
+
+// 入队
+void enqueue(Queue *queue, keyparameter data)
+{
+	pthread_mutex_lock(&queue->lock); // 加锁
+	KeyqueueNode *new_node = (KeyqueueNode *)malloc(sizeof(KeyqueueNode));
+	if (!new_node)
+	{
+		pthread_mutex_unlock(&queue->lock); // 解锁
+		perror("Memory allocation error");
+	}
+	new_node->keypara = data;
+	new_node->next = NULL;
+	if (queue->rear)
+	{
+		queue->rear->next = new_node;
+	}
+	else
+	{
+		queue->front = new_node;
+	}
+	queue->rear = new_node;
+	queue->count += 1;
+	pthread_mutex_unlock(&queue->lock); // 解锁
+}
+
+// 出队
+keyparameter dequeue(Queue *queue)
+{
+	pthread_mutex_lock(&queue->lock); // 加锁
+	if (is_empty(queue))
+	{
+		pthread_mutex_unlock(&queue->lock); // 解锁
+		perror("Queue underflow");
+	}
+	KeyqueueNode *temp = queue->front;
+	keyparameter data = temp->keypara;
+	queue->front = temp->next;
+	if (!queue->front)
+	{
+		queue->rear = NULL;
+	}
+	free(temp);
+	queue->count -= 1;
+	pthread_mutex_unlock(&queue->lock); // 解锁
+	return data;
+}
+
+// 检查队列是否为空
+int is_empty(const Queue *queue)
+{
+	return queue->front == NULL;
+}
+
+// 销毁队列
+void destroy_queue(Queue *queue)
+{
+	free(queue);
+	pthread_mutex_destroy(&queue->lock); // 销毁锁
+}
+
 typedef struct
 {
 	int socket_fd;
 	uint32_t spi;
 	bool key_type;
+	int key_lenth;
 	char raw_ekey[64 + 1], raw_dkey[64 + 1], old_dkey[64 + 1]; // 记录原始量子密钥
+	Queue *encQueue, *decQueue;								   // 加密密钥队列和解密密钥队列
 	int ekey_rw, dkey_lw, dkey_rw;							   // 加密右窗口，解密左窗口，解密右窗口
 	pthread_mutex_t mutex;									   // 互斥锁变量
 } SpiSocketPair;
@@ -125,6 +226,72 @@ void HKDF(const unsigned char *salt, int salt_len,
 	}
 }
 
+void *thread_enckey_preaccess(void *args)
+{
+	SpiSocketPair *spipair = (SpiSocketPair *)args;
+	spipair->encQueue = (Queue *)malloc(sizeof(Queue));
+	init_queue(spipair->encQueue); // 初始化加密密钥缓存队列
+	int next_seqno = 1;
+	while (spipair->encQueue->count < 10) // 大概10ms获取一次密钥，每次更换用时1ms
+	{
+		char buf[128], rbuf[128];
+		sprintf(buf, "getsk %u %d %u 0\n", spipair->spi, spipair->key_lenth, next_seqno);
+		int ret = send(spipair->socket_fd, buf, strlen(buf), 0);
+		if (ret < 0)
+		{
+			perror("getsk send error!\n");
+			return false;
+		}
+		ret = read(spipair->socket_fd, rbuf, sizeof(rbuf));
+		if (ret < 0)
+		{
+			perror("getsk read error!\n");
+			return false;
+		}
+		keyparameter keypara;
+		int range = 0;
+		memcpy(&range, rbuf, sizeof(int));
+		next_seqno += range;
+		keypara.range = range;
+		memcpy(keypara.qkey, rbuf + sizeof(int), spipair->key_lenth);
+		enqueue(spipair->encQueue, keypara);
+	}
+	destroy_queue(spipair->encQueue);
+}
+
+void *thread_deckey_preaccess(void *args)
+{
+	SpiSocketPair *spipair = (SpiSocketPair *)args;
+	spipair->decQueue = (Queue *)malloc(sizeof(Queue));
+	init_queue(spipair->decQueue); // 初始化加密密钥缓存队列
+	int next_seqno = 1;
+	while (spipair->decQueue->count < 10)
+	{
+		char buf[128], rbuf[128];
+		sprintf(buf, "getsk %u %d %u 1\n", spipair->spi, spipair->key_lenth, next_seqno);
+		int ret = send(spipair->socket_fd, buf, strlen(buf), 0);
+		if (ret < 0)
+		{
+			perror("getsk send error!\n");
+			return false;
+		}
+		ret = read(spipair->socket_fd, rbuf, sizeof(rbuf));
+		if (ret < 0)
+		{
+			perror("getsk read error!\n");
+			return false;
+		}
+		keyparameter keypara;
+		int range = 0;
+		memcpy(&range, rbuf, sizeof(int));
+		next_seqno += range;
+		keypara.range = range;
+		memcpy(keypara.qkey, rbuf + sizeof(int), spipair->key_lenth);
+		enqueue(spipair->decQueue, keypara);
+	}
+	destroy_queue(spipair->decQueue);
+}
+
 /**
  * @description: 派生量子密钥,通过spi和原始密钥派生
  * @param {unsigned char*} key 原始密钥
@@ -170,7 +337,6 @@ SpiSocketPair *findspipair(uint32_t spi, bool key_type)
 		perror("Failed to create socket");
 		return NULL;
 	}
-
 	struct sockaddr_un serv_addr;
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sun_family = AF_UNIX;
@@ -208,10 +374,8 @@ SpiSocketPair *findspipair(uint32_t spi, bool key_type)
  */
 static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk, size_t keysize)
 {
-	//u_char rawkey[keysize + 1];
 	int ret = 0;
 	SpiSocketPair *spipair;
-	char buf[128], rbuf[128];
 	spipair = findspipair(spi, key_type);
 	pthread_mutex_lock(&spipair->mutex);
 	if (key_type == 0)
@@ -224,24 +388,31 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk
 				perror("establish_connection error!\n");
 				return false;
 			}
-			sprintf(buf, "getsk %u %d %u %d\n", spi, keysize, next_seqno, key_type);
-
-			ret = send(spipair->socket_fd, buf, strlen(buf), 0);
-			if (ret < 0)
+			// 如果是第一个数据包，启动密钥预取线程
+			if (next_seqno == 1)
 			{
-				perror("getsk send error!\n");
-				return false;
+				spipair->key_lenth = keysize;
+				pthread_t thread_enckey;
+				// 创建子线程
+				if (pthread_create(&thread_enckey, NULL, thread_enckey_preaccess, (void *)spipair) != 0)
+				{
+					perror("pthread_create");
+					return false;
+				}
+				// 线程分离
+				if (pthread_detach(thread_enckey) != 0)
+				{
+					perror("pthread_detach");
+					return false;
+				}
 			}
-			ret = read(spipair->socket_fd, rbuf, sizeof(rbuf));
-			if (ret < 0)
-			{
-				perror("getsk read error!\n");
-				return false;
+			while (is_empty(spipair->encQueue))
+			{ // 先判断队列是否为空，如果是空，说明参数还未到达队列，进行一定时间的等待
+				usleep(1000);
 			}
-			int range = 0;
-			memcpy(&range, rbuf, sizeof(int));
-			memcpy(spipair->raw_ekey, rbuf + sizeof(int), keysize);
-			spipair->ekey_rw += range;
+			keyparameter keypara = dequeue(spipair->encQueue); // 正确的密钥参数由一个队列管理
+			memcpy(spipair->raw_ekey, keypara.qkey, keysize);
+			spipair->ekey_rw += keypara.range;
 		}
 		pthread_mutex_unlock(&spipair->mutex);
 		memcpy(qk->ptr, spipair->raw_ekey, keysize);
@@ -258,25 +429,33 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk
 				perror("establish_connection error!\n");
 				return false;
 			}
-			sprintf(buf, "getsk %u %d %u %d\n", spi, keysize, next_seqno, key_type);
-			ret = send(spipair->socket_fd, buf, strlen(buf), 0);
-			if (ret < 0)
+			// 如果是第一个数据包，启动密钥预取线程
+			if (next_seqno == 1)
 			{
-				perror("getsk send error!\n");
-				return false;
+				spipair->key_lenth = keysize;
+				pthread_t thread_deckey;
+				// 创建子线程
+				if (pthread_create(&thread_deckey, NULL, thread_deckey_preaccess, (void *)spipair) != 0)
+				{
+					perror("pthread_create");
+					return false;
+				}
+				// 线程分离
+				if (pthread_detach(thread_deckey) != 0)
+				{
+					perror("pthread_detach");
+					return false;
+				}
 			}
-			ret = read(spipair->socket_fd, rbuf, sizeof(rbuf));
-			if (ret < 0)
-			{
-				perror("getsk read error!\n");
-				return false;
+			while (is_empty(spipair->decQueue))
+			{ // 先判断队列是否为空，如果是空，说明参数还未到达队列，进行一定时间的等待
+				usleep(1000);
 			}
+			keyparameter keypara = dequeue(spipair->decQueue); // 正确的密钥参数由一个队列管理
 			memcpy(spipair->old_dkey, spipair->raw_dkey, keysize);
-			int range = 0;
-			memcpy(&range, rbuf, sizeof(int));
-			memcpy(spipair->raw_dkey, rbuf + sizeof(int), keysize);
+			memcpy(spipair->raw_dkey, keypara.qkey, keysize);
 			spipair->dkey_lw = spipair->dkey_rw;
-			spipair->dkey_rw += range;
+			spipair->dkey_rw += keypara.range;
 			goto loop1;
 		}
 		pthread_mutex_unlock(&spipair->mutex);
@@ -290,43 +469,8 @@ static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk
 			memcpy(qk->ptr, spipair->old_dkey, keysize);
 			return true;
 		}
-		// derive_key(rawkey, ret, next_seqno, keysize);
 	}
 }
-
-// static bool getqsk(uint32_t spi, uint32_t next_seqno, bool key_type, chunk_t *qk, size_t keysize)
-// {
-// 	u_char rawkey[keysize + 1];
-// 	int ret = 0;
-// 	int fd;
-// 	char buf[128], rbuf[128];
-
-// 	fd = establish_connection(spi, key_type);
-// 	if (fd == -1)
-// 	{
-// 		// 处理建立连接失败的情况
-// 		perror("establish_connection error!\n");
-// 		return false;
-// 	}
-// 	sprintf(buf, "getsk %u %d %u %d\n", spi, keysize, next_seqno, key_type);
-
-// 	ret = send(fd, buf, strlen(buf), 0);
-// 	if (ret < 0)
-// 	{
-// 		perror("getsk send error!\n");
-// 		return false;
-// 	}
-// 	ret = read(fd, rbuf, sizeof(rbuf));
-// 	if (ret < 0)
-// 	{
-// 		perror("getsk read error!\n");
-// 		return false;
-// 	}
-// 	memcpy(rawkey, rbuf, ret);
-// 	derive_key(rawkey, ret, next_seqno, keysize);
-// 	memcpy(qk->ptr, rawkey, keysize);
-// 	return true;
-// }
 
 /**
  *获取量子OTP密钥
